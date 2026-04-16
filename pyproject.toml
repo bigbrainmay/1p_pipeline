@@ -23,7 +23,7 @@ dependencies = [
     "scikit-learn==1.8.0",
     "xgboost==3.0.0",
     "tqdm==4.67.1",
-    "polars==1.33.0",`
+    "polars==1.33.0",
     "numba==0.61.2",
     "ipykernel==7.2.0",
     "ipython==9.11.0",
