@@ -1,2 +1,0 @@
-date,beh_csv_path,neu_csv_path,sleap_csv_path
-10/28/25,"""\Data\May\Cross_Maze\CCTT6-1-12-A\20251028\beh-cam_frame-id_0.csv""","""\Data\May\Cross_Maze\CCTT6-1-12-A\20251028\miniscope_frame-id_0.csv""","""Users\May\SLEAP\Miniscope_Model\20260210_1-12-A_20251028.000_beh-cam_0.analysis.csv"""
