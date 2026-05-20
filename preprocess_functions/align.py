@@ -78,33 +78,54 @@ def load_sessions(sheet_path, date_col="date"):
         if "neu_csv" not in df.columns:
                 df["neu_csv"] = None
 
+        if "cell_csv" not in df.columns:
+                df["cell_csv"] = None
+
         if "beh_vid" not in df.columns:
                 df["beh_vid"] = None
         all_sheets[mouse_name] = df
     return all_sheets
 
 #creates global timeline based off min & max timestamps from beh and neu streams, returns global index
-def build_timeline(neu_df: pd.DataFrame,
-    beh_df: pd.DataFrame, 
+def build_timeline(
+    streams: list[pd.DataFrame],
     fps: float, 
-    ts_col: str = "Timestamp") -> pd.DataFrame:
+    ts_col: str = "Timestamp",) -> pd.DataFrame:
 
     dt = pd.to_timedelta(1.0 / fps, unit="s")
 
-    neu_ts = pd.to_datetime(neu_df[ts_col], utc=True, errors="coerce")
-    beh_ts = pd.to_datetime(beh_df[ts_col], utc=True, errors="coerce")
+    mins = []
+    maxs = []
 
-    if neu_ts.isna().all() or beh_ts.isna().all():
-        raise ValueError("All timestamps are NaT in neu or beh after parsing")
+    for df in streams:
+        if df is None or df.empty:
+            continue
 
-    t0 = min(neu_ts.min(), beh_ts.min())
-    t1 = max(neu_ts.max(), beh_ts.max())
+        if ts_col not in df.columns:
+            raise ValueError(
+                f"Timestamp column {ts_col!r} missing from stream. "
+                f"Found columns: {df.columns.tolist()}"
+            )
 
-    global_ts = pd.date_range(start=t0, end=t1, freq=dt)
+        ts = pd.to_datetime(df[ts_col], utc=True, errors="coerce")
 
-    return pd.DataFrame(
-        {"global_idx": np.arange(len(global_ts), dtype=int), "global_ts": global_ts}
+        if ts.notna().any():
+            mins.append(ts.min())
+            maxs.append(ts.max())
+
+    if not mins:
+        raise ValueError("No valid timestamps found in any stream")
+
+    global_ts = pd.date_range(
+        start=min(mins),
+        end=max(maxs),
+        freq=pd.to_timedelta(1.0 / fps, unit="s"),
     )
+
+    return pd.DataFrame({
+        "global_idx": np.arange(len(global_ts), dtype=int),
+        "global_ts": global_ts,
+    })
 
 #maps streams together, merges on global index, returns dataframe
 def map_stream(stream_df: pd.DataFrame, 
@@ -145,44 +166,109 @@ def align_session(
     fps: float,
     ts_col: str = "Timestamp",
     neu_path: Path | None = None,
+    cell_path: Path | None = None,
     sleap_cols: list[str] | None = None,
 ) -> pd.DataFrame:
 
     beh_df = pd.read_csv(beh_path)
     sleap_df = pd.read_csv(sleap_path)
+    neu_df = pd.read_csv(neu_path) if neu_path is not None else None
+    cell_df = pd.read_csv(cell_path) if cell_path is not None else None
 
-    if neu_path is not None:
-        neu_df = pd.read_csv(neu_path)
-        timeline = build_timeline(neu_df, beh_df, fps=fps, ts_col=ts_col)
-    else:
-        # build timeline from behavior only
-        beh_ts = pd.to_datetime(beh_df[ts_col], utc=True, errors="coerce")
-        dt = pd.to_timedelta(1.0 / fps, unit="s")
-        global_ts = pd.date_range(start=beh_ts.min(), end=beh_ts.max(), freq=dt)
-        timeline = pd.DataFrame({
-            "global_idx": np.arange(len(global_ts), dtype=int),
-            "global_ts": global_ts
-        })
+    if cell_df is not None:
+        if neu_df is None:
+            raise ValueError(
+                "cell_path was provided, but neu_df is None. "
+                "Need neu_df timestamps to align cell traces."
+            )
+
+        if len(cell_df) != len(neu_df):
+            raise ValueError(
+                f"Cell trace row count does not match neural timestamp row count: "
+                f"cell_df={len(cell_df)}, neu_df={len(neu_df)}"
+            )
+
+        if ts_col not in neu_df.columns:
+            raise ValueError(
+                f"neu_df is missing timestamp column {ts_col!r}. "
+                f"Found columns: {neu_df.columns.tolist()}"
+            )
+        
+        if "index" in cell_df.columns:
+            cell_df = cell_df.rename(columns={"index": "cell_frame_idx"})
+        else:
+            cell_df.insert(0, "cell_frame_idx", np.arange(len(cell_df), dtype=int))
+
+        cell_df[ts_col] = neu_df[ts_col].values
+
+        # Sanity checks.
+        if cell_df[ts_col].isna().any():
+            raise ValueError("Some copied cell timestamps are missing/NaN")
+
+        cell_cols = [c for c in cell_df.columns if c.startswith("cell_")]
+        if not cell_cols:
+            raise ValueError(
+                "No cell trace columns found. Expected columns like cell_000, cell_001, ..."
+            )
+
+        print(f"Loaded cell traces: {len(cell_df)} frames x {len(cell_cols)} cells")
+
+    timeline = build_timeline(
+        [neu_df, beh_df, cell_df], 
+        fps=fps, 
+        ts_col=ts_col,
+        )
+
 
     beh_stream = map_stream(
-        beh_df, timeline, fps=fps, ts_col=ts_col,
-        prefix="beh", add_frame_idx=True
+        beh_df, 
+        timeline, 
+        fps=fps, 
+        ts_col=ts_col,
+        prefix="beh", 
+        add_frame_idx=True
     )
 
-    if neu_path is not None:
+    aligned = beh_stream.copy()
+
+    if neu_df is not None:
         neu_stream = map_stream(
-            neu_df, timeline, fps=fps, ts_col=ts_col,
-            prefix="neu", add_frame_idx=False
+            neu_df, 
+            timeline, 
+            fps=fps, 
+            ts_col=ts_col,
+            prefix="neu", 
+            add_frame_idx=False
         )
-        aligned = beh_stream.merge(
+
+        aligned = aligned.merge(
             neu_stream.drop(columns=["global_ts"]),
             on="global_idx",
-            how="left"
+            how="left",
+             suffixes=("", "_neu"),
         )
     else:
-        aligned = beh_stream.copy()
         aligned["neu_ts"] = pd.NaT
         aligned["neu_dropped"] = True
+
+    if cell_df is not None:
+        cell_stream = map_stream(
+            cell_df,
+            timeline,
+            fps=fps,
+            ts_col=ts_col,
+            prefix="cell",
+            add_frame_idx=False,
+        )
+        aligned = aligned.merge(
+            cell_stream.drop(columns=["global_ts"]),
+            on="global_idx",
+            how="left",
+            suffixes=("", "_cell"),
+        )
+    else:
+        aligned["cell_ts"] = pd.NaT
+        aligned["cell_dropped"] = True
 
     # --- SLEAP merge ---
     sleap = sleap_df.copy().rename(columns={"frame_idx": "beh_frame_idx"})
@@ -210,18 +296,21 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
             beh_path = resolve_lab_path(row["beh_csv"])
             sleap_path = resolve_lab_path(row["sleap_csv"])
             neu_path = resolve_lab_path(row["neu_csv"]) if pd.notna(row["neu_csv"]) else None
+            cell_path = resolve_lab_path(row["cell_csv"]) if pd.notna(row["cell_csv"]) else None
             beh_vid = resolve_lab_path(row["beh_vid"]) if pd.notna(row["beh_vid"]) else None
 
             print(f"\nSession: {session_id}")
             print("beh_path  :", beh_path)
             print("sleap_path:", sleap_path)
             print("neu_path  :", neu_path)
+            print("cell_path :", cell_path)
 
         
             aligned = align_session(
                 beh_path=beh_path,
                 sleap_path=sleap_path,
                 neu_path=neu_path,
+                cell_path=cell_path,
                 fps=fps,
                 ts_col=ts_col,
             )
