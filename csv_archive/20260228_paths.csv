@@ -1,8 +1,0 @@
-﻿date,beh_csv_path,neu_csv_path,sleap_csv_path,beh_vid_path
-11/5/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251105\beh-cam_frame-id_0.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251105\miniscope_frame-id_0.csv,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.000_beh-cam_0.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251105\beh-cam_0.avi
-11/13/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251113\beh-cam_frame-id_6.csv,,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.001_beh-cam_2.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251113\beh-cam_2.avi
-11/14/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251114\beh-cam_frame-id_0.csv,,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.002_beh-cam_0.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251114\beh-cam_0.avi
-11/17/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251117\beh-cam_frame-id_0.csv,,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.003_beh-cam_0.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251117\beh-cam_0.avi
-11/18/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251118\beh-cam_frame-id_0.csv,,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.004_beh-cam_0.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251118\beh-cam_0.avi
-11/20/2025,\Data\May\Cross_Maze\CCTT6-1-12-C\20251120\beh-cam_frame-id_0.csv,,\Users\May\SLEAP\Miniscope_Model\20260401_1-12-C_20251031-1125\20260324_1-12-C_20251031-1125.005_beh-cam_0.analysis.csv,\Data\May\Cross_Maze\CCTT6-1-12-C\20251120\beh-cam_0.avi
-,,,,
