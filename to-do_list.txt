@@ -1,0 +1,17 @@
+TO-DO LIST FOR OPTIMIZING PIPELINE STRUCTURE (outside of actual programming)
+
+1. Make SPC Conda environment
+    - Meet all 1p_pipeline dependencies
+    - Link to MATLAB 2021a Python engine
+
+2. Import necessary functions and files in repository
+    - Pull from existing behavioral SPC code in server as needed
+    - Ensure necessary MATLAB file paths accessible from main.py
+        - Basically get rid of need for adding specific paths to engine
+
+3. Organize functions accordingly
+    - Organize files by step of processing, language, utils vs. executors
+
+4. Comment and make READ_ME.md
+    - Keep comments generalizable to use outside of just SPC context
+        - Especially for 1p section to make comments transferable to main 1p_pipeline branch

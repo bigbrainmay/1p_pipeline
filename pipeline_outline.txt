@@ -1,0 +1,29 @@
+OUTLINE FOR SPC DATA ANALYSIS PIPELINE
+
+MAIN
+-arguments:
+    - list of file paths to analyze
+    - calcium imaging boolean (default=TRUE)
+ 
+# PART 1: Behavioral data handling:
+
+- Run gen_data_bpod.py
+    - outputs basic session metadata
+    - organizes raw_bpod.mat data
+    - outputs basic behavioral statistics
+        - stimulus responses, disc. ratios
+
+- Run behavioral_plots.py to visualize:
+    - behavioral responses across all phases
+    - phase-specific behavioral metrics
+    - response comparisons across cues
+    - computed statistical values
+
+# PART 2: 1p data handling:
+
+- Run ActSort App and EXTRACT.m through MATLAB engine
+    - Processes raw calcium data and sorts cells
+    - Manual cell sorting
+
+- Run trace_import.py
+    - creates baseline, denoised, and deconvolved calcium data structures
