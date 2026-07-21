@@ -23,7 +23,10 @@ conda activate myenv
 cd path/to/repo
 
 ```
-6. Install dependencies from pyproject.toml:
+
+6. Install Build Tools for Visual Studio from here: https://visualstudio.microsoft.com/downloads/ and select "Desktop Development with C++"
+
+7. Install dependencies from pyproject.toml:
 ```bash
 
 pip install -e . 

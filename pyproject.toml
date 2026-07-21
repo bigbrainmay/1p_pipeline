@@ -11,20 +11,20 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "jupyterlab==4.3.5",
-    "pathlib==1.0.1",
-    "scipy==1.15.1",
-    "pandas==3.0.1",
-    "numpy==2.4.2",
-    "matplotlib==3.10.8",
-    "pyarrow==23.0.1",
-    "seaborn==0.13.2",
-    "matplotlib==3.10.8",
-    "scikit-learn==1.8.0",
-    "xgboost==3.0.0",
-    "tqdm==4.67.1",
-    "polars==1.33.0",
-    "numba==0.61.2",
+    "jupyterlab==4.3.5",
+    "pathlib==1.0.1",
+    "scipy==1.15.1",
+    "pandas==3.0.1",
+    "numpy==2.2.6",
+    "matplotlib==3.10.8",
+    "pyarrow==23.0.1",
+    "seaborn==0.13.2",
+    "matplotlib==3.10.8",
+    "scikit-learn==1.8.0",
+    "xgboost==3.0.0",
+    "tqdm==4.67.1",
+    "polars==1.33.0",
+    "numba==0.61.2",
     "ipykernel==7.2.0",
     "ipython==9.11.0",
     "ipywidgets==8.1.8",
@@ -34,11 +34,10 @@ dependencies = [
     "oasis-deconv==0.2.1",
     "h5py==3.14.0",
     "seaborn==0.13.2",
-
 ]
 
 [project.urls]
 Homepage = "https://github.com/bigbrainmay/1p_pipeline"
 
 [tool.setuptools]
-packages = ["1p_preprocess"]
+packages = ["preprocess_functions"]
