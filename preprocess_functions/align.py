@@ -172,11 +172,11 @@ def align_session(
 
     beh_df = pd.read_csv(beh_path)
     sleap_df = pd.read_csv(sleap_path)
-    neu_df = pd.read_csv(neu_path) if neu_path is not None else None
-    cell_df = pd.read_csv(cell_path) if cell_path is not None else None
+    neu_df = pd.read_csv(neu_path) if neu_path else None
+    cell_df = pd.read_csv(cell_path) if cell_path else None
 
-    if cell_df is not None:
-        if neu_df is None:
+    if cell_df:
+        if not neu_df:
             raise ValueError(
                 "cell_path was provided, but neu_df is None. "
                 "Need neu_df timestamps to align cell traces."
