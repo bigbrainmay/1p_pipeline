@@ -32,3 +32,17 @@ cd path/to/repo
 pip install -e . 
 
 ```
+8. Install MATLAB 2021b here: https://www.mathworks.com/downloads/
+- Install Toolboxes through the .exe:
+    - Bioinformatics
+    - Curve Fitting
+    - Econometrics
+    - Image Processing
+    - Optimization
+    - Parallel Computing
+    - Signal Processing
+    - Statistics and Machine Learning
+    - Wavelet 
+- Install add-ons after launching:
+    - "EXTRACT-public" by Fatih Dinc, found in MATLAB's Add-on Explorer
+    - "ActSort" by the Schnitzer Lab, found here: https://github.com/schnitzer-lab/ActSort-public/blob/main/software/ActSort.mlappinstall
