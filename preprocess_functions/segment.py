@@ -57,12 +57,13 @@ def debounce(mask: np.ndarray, gap_frames=10, min_run_frames=3) -> np.ndarray:
 #
 def segment_trials_gap_window(
     df,
-    startbox_col="in_startbox_L",
+    startbox_col=("in_startbox_L", "in_startbox_R"),
     arena_only_col="arena_only",
     fps=30.0,
     max_gap_s=3.0,
     dwell_frames=1,      # start with 1; increase to 3–6 after it works
     min_trial_s=0.5,
+    require_opposite_side=False,
 ):
 
     """
@@ -82,63 +83,116 @@ def segment_trials_gap_window(
         list[tuple[int, int]]:
             List of (start_frame, end_frame) for each trial
     """
-       
-    sb = df[startbox_col].astype(bool).to_numpy()
-    ar = df[arena_only_col].astype(bool).to_numpy()
-    gap = (~sb) & (~ar)
+    left_col, right_col = startbox_col
+    
+    sb_left = df[left_col].fillna(False).astype(bool).to_numpy()
+    sb_right = df[right_col].fillna(False).astype(bool).to_numpy()
+    ar = df[arena_only_col].fillna(False).astype(bool).to_numpy()
+
+    sb = sb_left | sb_right
 
     max_gap = int(round(max_gap_s * fps))
     min_trial = int(round(min_trial_s * fps))
 
-    def stable(mask, i):
-        return mask[i:i+dwell_frames].sum() >= dwell_frames
-
-    trials = []
-    i = 0
     n = len(df)
+    trials = []
+
+    def stable(mask, i):
+        """True when the state lasts for at least dwell_frames."""
+        if i + dwell_frames > n:
+            return False
+        return mask[i:i + dwell_frames].all()
+
+    def startbox_side(i):
+        """Return the stable start-box side at frame i."""
+        left_stable = stable(sb_left, i)
+        right_stable = stable(sb_right, i)
+
+        if left_stable and not right_stable:
+            return "L"
+        if right_stable and not left_stable:
+            return "R"
+
+        # Ambiguous or not stably in either box
+        return None
+
+    i = 0
 
     while i < n:
-        # find a startbox moment
-        while i < n and not stable(sb, i):
-            i += 1
-        if i >= n: break
 
-        # leave startbox
-        j = i
-        while j < n and sb[j]:
-            j += 1
-        if j >= n: break
+        # Find stable occupancy in either start box
+        start_side = None
 
-        # find arena entry within window after leaving startbox
-        win_end = min(n, j + max_gap)
-        k = j
-        s = None
-        while k < win_end:
-            if stable(ar, k):
-                s = k
+        while i < n:
+            start_side = startbox_side(i)
+            if start_side is not None:
                 break
-            k += 1
-        if s is None:
+            i += 1
+
+        if i >= n:
+            break
+
+        # Leave whichever start box the mouse began in
+        start_mask = sb_left if start_side == "L" else sb_right
+
+        j = i
+        while j < n and start_mask[j]:
+            j += 1
+
+        if j >= n:
+            break
+
+        # Find arena entry shortly after leaving the start box
+        window_end = min(n, j + max_gap)
+        arena_start = None
+
+        for k in range(j, window_end):
+            if stable(ar, k):
+                arena_start = k
+                break
+
+        if arena_start is None:
             i = j
             continue
 
-        # find startbox re-entry within window after being in arena at least once
-        m = s + 1
-        e = None
+        # Find stable entry into either start box
+        end_frame = None
+        end_side = None
+
+        m = arena_start + 1
+
         while m < n:
-            if stable(sb, m):
-                # require we saw arena within the last max_gap frames
-                lo = max(0, m - max_gap)
-                if ar[lo:m].any():
-                    e = m
+            candidate_side = startbox_side(m)
+
+            if candidate_side is not None:
+                # Optionally require the mouse to finish on the other side
+                correct_side = (
+                    not require_opposite_side
+                    or candidate_side != start_side
+                )
+
+                # Confirm arena occupancy occurred recently
+                recent_start = max(arena_start, m - max_gap)
+                recently_in_arena = ar[recent_start:m].any()
+
+                if correct_side and recently_in_arena:
+                    end_frame = m
+                    end_side = candidate_side
                     break
+
             m += 1
-        if e is None:
+
+        if end_frame is None:
             break
 
-        if (e - s) >= min_trial:
-            trials.append((int(s), int(e)))
+        if end_frame - arena_start >= min_trial:
+            trials.append({
+                "start_frame": int(arena_start),
+                "end_frame": int(end_frame),
+                "start_side": start_side,
+                "end_side": end_side,
+            })
 
-        i = e + 1
+        i = end_frame + 1
 
     return trials

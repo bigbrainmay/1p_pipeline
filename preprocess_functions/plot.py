@@ -197,17 +197,23 @@ def trial_viewer(
     video_col="beh_vid_path",
 ):
     session_ids = sorted(
-        session for session in aligned_sessions_with_rois.keys()
-        if session in trials_by_session and len(trials_by_session[session]) > 0
+        session
+        for session in aligned_sessions_with_rois
+        if (
+            session in trials_by_session
+            and len(trials_by_session[session]) > 0
+        )
     )
 
     if not session_ids:
-        raise ValueError("No sessions found with both aligned data and at least one trial.")
+        raise ValueError(
+            "No sessions found with both aligned data and at least one trial."
+        )
 
     session_dropdown = widgets.Dropdown(
         options=session_ids,
         value=session_ids[0],
-        description="Session:"
+        description="Session:",
     )
 
     trial_slider = widgets.IntSlider(
@@ -215,11 +221,9 @@ def trial_viewer(
         min=0,
         max=len(trials_by_session[session_dropdown.value]) - 1,
         step=1,
-        description="Trial",
-        continuous_update=False
+        description="Trial:",
+        continuous_update=False,
     )
-
-    output = widgets.Output()
 
     def update_slider_range(change):
         session = change["new"]
@@ -227,33 +231,63 @@ def trial_viewer(
         trial_slider.value = 0
 
     def show_trial(trial_idx, session):
-        with output:
-            clear_output(wait=True)
+        trials = trials_by_session[session]
+        trial = trials[trial_idx]
 
-            trials = trials_by_session[session]
-            s, e = map(int, trials[trial_idx])
+        # New dictionary format
+        if isinstance(trial, dict):
+            s = int(trial["start_frame"])
+            e = int(trial["end_frame"])
 
-            df_trial = aligned_sessions_with_rois[session].iloc[s:e+1].copy()
+            start_side = trial.get("start_side", "?")
+            end_side = trial.get("end_side", "?")
 
-            plot_head_direction_over_arena(
-                df_trial,
-                masks=masks_by_session[session],
-                x_col=x_col,
-                y_col=y_col,
-                title=f"{session} - Trial {trial_idx} Head Direction Over Arena"
+            title = (
+                f"{session} - Trial {trial_idx} "
+                f"({start_side} → {end_side}) "
+                f"Head Direction Over Arena"
             )
 
-    session_dropdown.observe(update_slider_range, names="value")
+        # Old tuple/list format: (start_frame, end_frame)
+        else:
+            s, e = map(int, trial)
 
-    controls = widgets.VBox([session_dropdown, trial_slider])
+            title = (
+                f"{session} - Trial {trial_idx} "
+                f"Head Direction Over Arena"
+            )
 
-    widgets.interactive_output(
+        df_trial = (
+            aligned_sessions_with_rois[session]
+            .iloc[s:e + 1]
+            .copy()
+        )
+
+        plot_head_direction_over_arena(
+            df_trial,
+            masks=masks_by_session[session],
+            x_col=x_col,
+            y_col=y_col,
+            title=title,
+        )
+
+    session_dropdown.observe(
+        update_slider_range,
+        names="value",
+    )
+
+    output = widgets.interactive_output(
         show_trial,
         {
             "trial_idx": trial_slider,
             "session": session_dropdown,
-        }
+        },
     )
+
+    controls = widgets.VBox([
+        session_dropdown,
+        trial_slider,
+    ])
 
     display(controls, output)
 
