@@ -6,38 +6,33 @@ import re
 
 fps = 30
 
-def make_ts_df(sess_path):
-    
-    # Handling behavioral camera .csv output
-    frame_ts = pd.read_csv(os.path.join(sess_path, f'{subj}_{sess}_beh_ts.csv')) # read the .csv and save as a DataFrame
-    frame_ts = frame_ts[['Value.Index', 'Timestamp.DateTime']] # condense to the frame index and timestamp columns
-    frame_ts.columns = ['Value', 'Time'] # rename columns for ease of access
-    frame_ts.insert(loc=0, column='Type', value='beh') # make a 'Type' column with values 'beh' for concatenation
+def make_ts_df(sess_path, sess_head, data_keys, ts_keys):
 
-    # Handling Bpod bytes .csv output
-    bpod_ts = pd.read_csv(os.path.join(sess_path, f'{subj}_{sess}_bpod_ts.csv')) # read the .csv and save as a DataFrame
-    bpod_ts = bpod_ts[['Value', 'Timestamp.DateTime']] # condense to the byte value and timestamp columns
-    bpod_ts.columns = ['Value', 'Time'] # rename columns for ease of access
-    bpod_ts.insert(loc=0, column='Type', value='bpod') # make a 'Type' column with values 'bpod' for concatenation
+    raw_ts = {} # initiate dict to handle all csv's in
 
-    # Handling miniscope .csv output
-    scope_ts = pd.read_csv(os.path.join(sess_path, f'{subj}_{sess}_scope_ts.csv')) # read the .csv and save as a DataFrame
-    scope_ts = scope_ts[['Value', 'Timestamp.DateTime']] # condense to the frame index and timestamp column
-    scope_ts.columns = ['Value', 'Time'] # rename columns for ease of access
-    scope_ts.insert(loc=0, column='Type', value='scope') # make a 'Type' column with values 'scope' for concatenation
+    for k in ts_keys: # loop through each key
 
-    times = pd.concat([frame_ts, bpod_ts, scope_ts], axis=1) # concatenate behavioral camera, Bpod, and miniscope DataFrames
-    start_ts = pd.to_datetime(time['Time'], utc=False, errors='coerce').min() # pull earliest timestamp
-    times['Time'] = (times['Time']-start_ts).dt.total_seconds() # new column with time(s) elapsed since first timestamp
+        df = pd.read_csv(os.path.join(sess_path, f'{sess_head}_{k}_ts0.csv')) # read the csv and store as a DataFrame
+        df = df[['Value', 'Timestamp.DateTime']] # condense DataFrame to the frame/byte value and timestamp
+        df = df.rename(columns={'Timestamp.DateTime': 'Time'}) # rename column for ease of access
+        df['Time'] = pd.to_datetime(df['Time'], utc=False, errors='coerce') # convert timestamps to DateTime objects
+        
+        if k == 'cam':
+            start = min(df['Time'])
 
-    ref_time = np.arange(0, max(ts['Time'].to_list()), 1/fps).to_list() # creates a reference/global timescale for alignment 
+        raw_ts[k] = df # put DataFrame in the dict
 
-    
+    sync_ts = {k: {'Value': v['Value'], 'Time': (v['Time']-start).dt.total_seconds()}
+               for k,v in raw_ts.items()}
 
+    ref = sync_ts['cam'].sort_values('Time')
 
-def frame_sync():
+    for k,v in sync_ts.items():
+        if k =='cam':
+            continue
 
-
-
-def main(sess_path, scope=True):
-    
+        merge = pd.merge_asof(v, ref, on='Time', direction='nearest', suffixes=['_raw','_sync'])
+        merge['Diff'] = merge['Time_raw']-merge['Time_sync']
+        mask = merge['Diff'] > (1/fps)
+        merge.iloc[mask, 'Time_sync'] = None
+        sync_ts['Time'] = merge['Time_sync']

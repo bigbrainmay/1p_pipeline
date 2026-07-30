@@ -1,0 +1,28 @@
+DOCUMENTATION OF FUNCTIONS AND VARIABLES USED ACROSS THE PIPELINE
+
+VARIABLES
+
+subj: string - animalID
+
+sess: string - sessionID
+
+prot: string - protocol name
+
+sess_path: string - absolute path to session folder with all data
+
+fps: int - frames per second of scope; to be used for global timescale
+
+FUNCTIONS
+
+load_pkl(): utils.py - Loads a .pkl file and assigns it to a variable
+- Parameters:
+    - filepath | absolute path, with extension, to the .pkl to be read
+
+trim_avi(): utils.py - Cuts off a .avi file at a certain frame and writes out to a new file
+- Parameters:
+    - avi_path | string; absolute path, with extension, to the .avi to be handled
+    - cutoff | int; index of the first frame to be excluded from the trimmed output
+
+verify_len(): utils.py - compares length of some n number of objects
+- Parameters:
+    - *args | Every object to have length compared; ensure all are passable through len()
