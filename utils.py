@@ -22,7 +22,7 @@ def load_pkl(filepath):
         print(f'File not found: {filepath}')
         return None
 
-def splice_avi(avi_path, cutoff):
+def trim_avi(avi_path, cutoff):
 
     dst = f'{avi_path[:-4]}_cut.avi'
     cap = cv2.VideoCapture(avi_path)

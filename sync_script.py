@@ -1,12 +1,11 @@
 import numpy as np
 import os
 import pandas as pd
-from pathlib import Path
-import re
 
-fps = 30
+from config import fps
+from utils import load_pkl, verify_len
 
-def make_ts_df(sess_path, sess_head, data_keys, ts_keys):
+def load_raw_ts(sess_path, sess_head, ts_keys):
 
     raw_ts = {} # initiate dict to handle all csv's in
 
@@ -16,16 +15,20 @@ def make_ts_df(sess_path, sess_head, data_keys, ts_keys):
         df = df[['Value', 'Timestamp.DateTime']] # condense DataFrame to the frame/byte value and timestamp
         df = df.rename(columns={'Timestamp.DateTime': 'Time'}) # rename column for ease of access
         df['Time'] = pd.to_datetime(df['Time'], utc=False, errors='coerce') # convert timestamps to DateTime objects
-        
-        if k == 'cam':
-            start = min(df['Time'])
 
         raw_ts[k] = df # put DataFrame in the dict
+
+    return raw_ts
+
+
+def sync_times(raw_ts):
+
+    start = min(raw_ts['cam'])
 
     sync_ts = {k: {'Value': v['Value'], 'Time': (v['Time']-start).dt.total_seconds()}
                for k,v in raw_ts.items()}
 
-    ref = sync_ts['cam'].sort_values('Time')
+    ref = sync_ts['cam']
 
     for k,v in sync_ts.items():
         if k =='cam':
@@ -34,5 +37,77 @@ def make_ts_df(sess_path, sess_head, data_keys, ts_keys):
         merge = pd.merge_asof(v, ref, on='Time', direction='nearest', suffixes=['_raw','_sync'])
         merge['Diff'] = merge['Time_raw']-merge['Time_sync']
         mask = merge['Diff'] > (1/fps)
-        merge.iloc[mask, 'Time_sync'] = None
+        merge.loc[mask, 'Time_sync'] = np.nan
         sync_ts['Time'] = merge['Time_sync']
+
+def load_data(sess_path, sess_head, data_keys):
+
+    data_dfs = {}
+
+    if 'boris' in data_keys:
+        df = pd.read_csv(os.path.join(sess_path, f'{sess_head}_boris1.csv'))
+        df = df[['Behavior','Behavior type','Image index']]
+        df.columns = ['Event','Type','Frame']
+        df.insert(loc=0, column='Value', value=0), df['Value']=df['Value'].astype(object)
+        df.loc[df['Type']=='STOP', 'Value'] = 4
+        df.loc[~df['Type'].isin(['START','STOP']), 'Value'] = df.loc[~df['Type'].isin(['START','STOP']), 'Event']
+        data_dfs['boris'] = df
+    
+    if 'bpod' in data_keys:
+        dct = load_pkl(os.path.join(sess_path,f'{sess_head}_bpod.pkl'))
+        type1s = np.array(dct['Types']==1)
+        df = pd.DataFrame({k:v for k,v in dct['concatTable'] if k in ['Name','Total']})
+        df = df.rename(columns={'Total':'HW_time'})
+        df.insert(loc=0,column='Value',value=0)
+        df.loc[df['Name']=='ITI','Value'] = 2
+        if 'Audio' in df['Name'].values:
+            df.loc[df['Name']=='Audio','Value'] = np.where(type1s,3,4)
+        if 'Light' in df['Name'].values:
+            df.loc[df['Name']=='Light','Value'] = np.where(type1s,5,6)
+        df['Value'] = df['Value'].astype('int64')
+        data_dfs['bpod'] = df
+    
+    if 'slp' in data_keys:
+        df = pd.read_csv(os.path.join(sess_path,f'{sess_head}_SLP.csv'))
+        df = df.drop(columns=['track','instance.score','rcap.score','lcap.score','rear.score','lear.score','butt.score'])
+        df = df.rename(columns={'frame_idx':'Frame'})
+        df.columns = [c.replace('.','_') for c in df.columns.to_list()]
+        data_dfs['slp'] = df
+
+    if 'cells' in data_keys:
+        data_dfs['cells'] = pd.read_csv(os.path.join(sess_path,f'{sess_head}_cells.csv'))
+
+    return data_dfs
+
+def sync_data(data_keys,data_dfs,sync_ts):
+
+    data_synced = {}
+
+    if 'boris' in data_keys:
+        df = data_dfs['boris']
+        ts = sync_ts['cam']
+        df = df.merge(ts[['Frame','Time']],on='Frame',how='left')
+        data_synced['boris'] = df
+
+    if 'bpod' in data_keys:
+        df = data_dfs['bpod']
+        ts = sync_ts['bpod']
+        df = df.merge(ts[['Value','Time']],on='Value',how='left')
+        data_synced['bpod'] = df
+
+    if 'slp' in data_keys:
+        df = data_dfs['slp']
+        ts = sync_ts['cam']
+        df = df.merge(ts[['Frame','Time']],on='Frame',how='left')
+        data_synced['slp'] = df
+
+    if 'cells' in data_keys:
+        df = data_dfs['cells']
+        ts = sync_ts['scope']
+        if verify_len(df,ts):
+            df.insert(loc=0,column='Time',value=ts['Time'])
+            data_synced['cells'] = df
+        else:
+            print('The number of timepoints for cells and miniscope frames received by Bonsai do not match. Troubleshooting required.')
+
+    return data_synced
