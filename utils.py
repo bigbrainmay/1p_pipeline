@@ -1,6 +1,28 @@
 import cv2
 import joblib
+import numpy as np
 import pickle      
+
+def arr_caps(final_l, arr):
+    ld = final_l-len(arr)
+    if ld == 1:
+        arr = np.append(arr, arr[-1])
+    else:
+        prefill = np.full(int(np.floor(ld/2)), arr[0])
+        postfill = np.full(int(np.ceil(ld/2)), arr[-1])
+        arr = np.concatenate([prefill, arr, postfill])
+    return arr
+
+def diff_step(arr, step, prepend = None, append = None, cap = False):
+    diff = np.array(arr[step:].to_numpy()-arr[:-step].to_numpy())
+    if not cap:
+        if prepend is not None:
+            diff = np.concatenate([np.atleast_1d(prepend), diff])
+        if append is not None:
+            diff = np.concatenate([diff, np.atleast_1d(append)])
+    else:
+        diff = arr_caps(len(arr), diff)
+    return diff
 
 def load_pkl(filepath):
 

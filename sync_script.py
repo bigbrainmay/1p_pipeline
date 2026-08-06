@@ -23,22 +23,28 @@ def load_raw_ts(sess_path, sess_head, ts_keys):
 
 def sync_times(raw_ts):
 
-    start = min(raw_ts['cam'])
+    start = raw_ts['cam']['Time'].min()
 
-    sync_ts = {k: {'Value': v['Value'], 'Time': (v['Time']-start).dt.total_seconds()}
+    sync_ts = {k: pd.DataFrame({'Value': v['Value'], 
+                'Time': (v['Time']-start).dt.total_seconds()})
                for k,v in raw_ts.items()}
 
     ref = sync_ts['cam']
+    ref.columns = ['Frame', 'Time_sync']
 
     for k,v in sync_ts.items():
         if k =='cam':
             continue
 
-        merge = pd.merge_asof(v, ref, on='Time', direction='nearest', suffixes=['_raw','_sync'])
-        merge['Diff'] = merge['Time_raw']-merge['Time_sync']
+        merge = pd.merge_asof(v, ref, left_on='Time', right_on='Time_sync', direction='nearest')
+        merge['Diff'] = np.abs(merge['Time']-merge['Time_sync'])
         mask = merge['Diff'] > (1/fps)
-        merge.loc[mask, 'Time_sync'] = np.nan
-        sync_ts['Time'] = merge['Time_sync']
+        merge.loc[mask, ['Frame','Time_sync']] = np.nan
+        v['Time'] = merge['Time_sync']
+        v.insert(loc=0, column='Frame', value=merge['Frame'])
+        sync_ts[k]=v
+
+    return sync_ts
 
 def load_data(sess_path, sess_head, data_keys):
 
@@ -111,3 +117,4 @@ def sync_data(data_keys,data_dfs,sync_ts):
             print('The number of timepoints for cells and miniscope frames received by Bonsai do not match. Troubleshooting required.')
 
     return data_synced
+
