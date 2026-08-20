@@ -1,7 +1,12 @@
 import cv2
 import joblib
 import numpy as np
-import pickle      
+import os
+from pathlib import Path
+import pickle 
+import shutil
+import subprocess   
+from tqdm import tqdm  
 
 def arr_caps(final_l, arr):
     ld = final_l-len(arr)
@@ -23,6 +28,55 @@ def diff_step(arr, step, prepend = None, append = None, cap = False):
     else:
         diff = arr_caps(len(arr), diff)
     return diff
+
+def file_copy(src, dst):
+    verify = True
+    try:
+        subprocess.run(["robocopy", src, dst, "/Z", "/MT:8"])
+    except Exception as e:
+        print(f'Error when copying file {src} to {dst}: {e}')
+        verify = False
+    return verify
+
+def file_del(path):
+    verify = True
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(f'Error removing file {path}: {e}')
+        verify = False
+    return verify
+
+def folder_copy(src, dst):
+    verify = True
+    try:
+        src = Path(src)
+        dst = Path(dst)
+
+        size = sum(f.stat().st_size for f in src.rglob('*') if f.is_file())
+
+        with tqdm(total=size, unit='B', unit_scale=True, unit_divisor=1024,
+                  desc=f'Copying {src.name} to local...') as pbar:
+            def copy_by_file(srcp, dstp):
+                
+                shutil.copy2(srcp, dstp)
+                pbar.update(srcp.stat().st_size)
+
+                shutil.copytree(src, dst, dirs_exist_ok=True, copy_function=copy_by_file)
+
+    except Exception as e:
+        print(f'copying folder {src} to {dst} failed: {e}')
+        verify = False
+    return verify
+
+def folder_del(path):
+    verify = True
+    try: 
+        shutil.rmtree(path)
+    except Exception as e:
+        print(f'failed to remove folder {path}: {e}')
+        verify = False
+    return verify
 
 def load_pkl(filepath):
 

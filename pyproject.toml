@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "1p_pipeline"
+version = "0.0.1"
+description = "Construct and align behavioral and neural data"
+authors = [{ name = "bigbrainmay", email = "bigbrainmay@gmail.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">3.7,<=3.10"
+dependencies = [
+    "h5py==3.14.0",
+    "ipykernel==6.31.0",
+    "ipython==8.18.1",
+    "ipywidgets==8.1.8",
+    "jupyterlab==4.5.10",
+    "jupyterlab_widgets==3.0.16",
+    "matplotlib==3.9.4",
+    "numba==0.60.0",
+    "numpy==2.0.2",
+    "oasis-deconv==0.3.2",
+    "opencv-python==5.0.0.93",
+    "openpyxl==3.1.5",
+    "pandas==2.3.3",
+    "polars==1.36.1",
+    "pyarrow==21.0.0",
+    "scikit-learn==1.6.1",
+    "scipy==1.13.1",
+    "seaborn==0.13.2",
+    "tqdm==4.70.0",
+    "xgboost==2.1.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/bigbrainmay/1p_pipeline"
+
+[tool.setuptools]
+packages = ["analysis", "bpod_matlab"]

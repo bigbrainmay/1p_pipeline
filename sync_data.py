@@ -2,12 +2,14 @@ import numpy as np
 import os
 import pandas as pd
 
-from config import fps
+from config import *
 from utils import load_pkl, verify_len
 
-def load_raw_ts(sess_path, sess_head, ts_keys):
-
+def sync_data(sess_path, sess_head, ts_keys, data_keys):
     raw_ts = {} # initiate dict to handle all csv's in
+    
+    print(f'Timestamps used: {ts_keys}')
+    print(f'Data being synced: {data_keys}'+'\n'*3)
 
     for k in ts_keys: # loop through each key
 
@@ -17,11 +19,6 @@ def load_raw_ts(sess_path, sess_head, ts_keys):
         df['Time'] = pd.to_datetime(df['Time'], utc=False, errors='coerce') # convert timestamps to DateTime objects
 
         raw_ts[k] = df # put DataFrame in the dict
-
-    return raw_ts
-
-
-def sync_times(raw_ts):
 
     start = raw_ts['cam']['Time'].min()
 
@@ -44,9 +41,7 @@ def sync_times(raw_ts):
         v.insert(loc=0, column='Frame', value=merge['Frame'])
         sync_ts[k]=v
 
-    return sync_ts
-
-def load_data(sess_path, sess_head, data_keys):
+    print('Timestamps synced to behavior camera!'+'\n'*3+'Loading data...'+'\n'*3)
 
     data_dfs = {}
 
@@ -58,6 +53,7 @@ def load_data(sess_path, sess_head, data_keys):
         df.loc[df['Type']=='STOP', 'Value'] = 4
         df.loc[~df['Type'].isin(['START','STOP']), 'Value'] = df.loc[~df['Type'].isin(['START','STOP']), 'Event']
         data_dfs['boris'] = df
+        print('BORIS data loaded!'+'\n')
     
     if 'bpod' in data_keys:
         dct = load_pkl(os.path.join(sess_path,f'{sess_head}_bpod.pkl'))
@@ -72,6 +68,7 @@ def load_data(sess_path, sess_head, data_keys):
             df.loc[df['Name']=='Light','Value'] = np.where(type1s,5,6)
         df['Value'] = df['Value'].astype('int64')
         data_dfs['bpod'] = df
+        print('Bpod data loaded!'+'\n')
     
     if 'slp' in data_keys:
         df = pd.read_csv(os.path.join(sess_path,f'{sess_head}_SLP.csv'))
@@ -79,14 +76,13 @@ def load_data(sess_path, sess_head, data_keys):
         df = df.rename(columns={'frame_idx':'Frame'})
         df.columns = [c.replace('.','_') for c in df.columns.to_list()]
         data_dfs['slp'] = df
+        print('SLP data loaded!'+'\n')
 
     if 'cells' in data_keys:
         data_dfs['cells'] = pd.read_csv(os.path.join(sess_path,f'{sess_head}_cells.csv'))
+        print('Cell data loaded!'+'\n')
 
-    return data_dfs
-
-def sync_data(data_keys,data_dfs,sync_ts):
-
+    print('\n'+'All data loaded. Syncing data...'+'\n'*3)
     data_synced = {}
 
     if 'boris' in data_keys:
@@ -94,18 +90,21 @@ def sync_data(data_keys,data_dfs,sync_ts):
         ts = sync_ts['cam']
         df = df.merge(ts[['Frame','Time']],on='Frame',how='left')
         data_synced['boris'] = df
+        print('BORIS data synced!'+'\n')
 
     if 'bpod' in data_keys:
         df = data_dfs['bpod']
         ts = sync_ts['bpod']
         df = df.merge(ts[['Value','Time']],on='Value',how='left')
         data_synced['bpod'] = df
+        print('Bpod data synced!'+'\n')
 
     if 'slp' in data_keys:
         df = data_dfs['slp']
         ts = sync_ts['cam']
         df = df.merge(ts[['Frame','Time']],on='Frame',how='left')
         data_synced['slp'] = df
+        print('SLP data synced!'+'\n')
 
     if 'cells' in data_keys:
         df = data_dfs['cells']
@@ -113,8 +112,9 @@ def sync_data(data_keys,data_dfs,sync_ts):
         if verify_len(df,ts):
             df.insert(loc=0,column='Time',value=ts['Time'])
             data_synced['cells'] = df
+            print('Cell data synced!'+'\n')
         else:
             print('The number of timepoints for cells and miniscope frames received by Bonsai do not match. Troubleshooting required.')
+            return
 
-    return data_synced
-
+    return data_dfs

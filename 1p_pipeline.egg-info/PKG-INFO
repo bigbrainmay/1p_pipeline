@@ -1,0 +1,29 @@
+Metadata-Version: 2.4
+Name: 1p_pipeline
+Version: 0.0.1
+Summary: Construct and align behavioral and neural data
+Author-email: bigbrainmay <bigbrainmay@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/bigbrainmay/1p_pipeline
+Requires-Python: <=3.10,>3.7
+Description-Content-Type: text/markdown
+Requires-Dist: h5py==3.14.0
+Requires-Dist: ipykernel==6.31.0
+Requires-Dist: ipython==8.18.1
+Requires-Dist: ipywidgets==8.1.8
+Requires-Dist: jupyterlab==4.5.10
+Requires-Dist: jupyterlab_widgets==3.0.16
+Requires-Dist: matplotlib==3.9.4
+Requires-Dist: numba==0.60.0
+Requires-Dist: numpy==2.0.2
+Requires-Dist: oasis-deconv==0.3.2
+Requires-Dist: opencv-python==5.0.0.93
+Requires-Dist: openpyxl==3.1.5
+Requires-Dist: pandas==2.3.3
+Requires-Dist: polars==1.36.1
+Requires-Dist: pyarrow==21.0.0
+Requires-Dist: scikit-learn==1.6.1
+Requires-Dist: scipy==1.13.1
+Requires-Dist: seaborn==0.13.2
+Requires-Dist: tqdm==4.70.0
+Requires-Dist: xgboost==2.1.4

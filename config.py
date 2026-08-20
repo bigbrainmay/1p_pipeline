@@ -1,8 +1,8 @@
 import numpy as np
+import os
 
-
-
-# To be replaced with soft-coded reading of manually selected ROI coordinates:
+user = os.environ.get('USERNAME')
+wd = os.getcwd()
 
 
 fps=30

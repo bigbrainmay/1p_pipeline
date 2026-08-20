@@ -4,7 +4,7 @@ import pandas as pd
 from config import *
 from utils import arr_caps, diff_step
 
-def tracking_comps(data_synced):
+def compute_tracking(data_synced):
 
     slp = data_synced['slp']
     if 'boris' in data_synced.keys():
@@ -39,3 +39,5 @@ def tracking_comps(data_synced):
     ccw_adj = arr_caps(len(slp), ccw_adj)
     slp.loc[cw_adj, 'av'] = 360 - slp.loc[cw_adj, 'av']
     slp.loc[ccw_adj, 'av'] = 360 + slp.loc[ccw_adj, 'av']
+
+    return slp
