@@ -81,7 +81,7 @@ def convert_avi_to_h5(
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise OSError(f"Cannot open video file: {video_path}")
+        raise OSError(_video_open_error_message(video_path))
 
     frame_count_hint = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = float(cap.get(cv2.CAP_PROP_FPS))
@@ -230,7 +230,7 @@ def check_leading_video_corruption(
     video_path = Path(video_path)
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise OSError(f"Cannot open video file: {video_path}")
+        raise OSError(_video_open_error_message(video_path))
 
     metadata = {
         "frame_count_hint": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
@@ -349,6 +349,26 @@ def write_json_report(path: str | Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         json.dump(report, f, indent=2)
+
+
+def _video_open_error_message(video_path: Path) -> str:
+    parts = [part.lower() for part in video_path.parts]
+    lab_relative_hint = bool(parts and parts[0] in {"data", "users"})
+    message = [
+        f"Cannot open video file: {video_path}",
+        f"Path exists according to Python: {video_path.exists()}",
+        f"Current working directory: {Path.cwd()}",
+    ]
+    if lab_relative_hint:
+        message.extend(
+            [
+                "This looks like a lab-relative path from the manifest.",
+                "Set LAB_DRIVE_PATH or the notebook LAB_DRIVE variable to the drive/root that contains this path.",
+                'Example on Windows if the file is Z:\\Data\\May\\...: LAB_DRIVE = "Z:/"',
+                'Example on Windows if the file is C:\\Data\\May\\...: LAB_DRIVE = "C:/"',
+            ]
+        )
+    return "\n".join(message)
 
 
 def _read_frame_at(cap, frame_idx: int, cv2):

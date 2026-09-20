@@ -40,6 +40,10 @@ export LAB_DRIVE_PATH=/Volumes/ASA_Lab
 
 On a Windows GPU PC, use the mapped lab drive instead, for example
 `--lab-drive Z:\` or set `LAB_DRIVE_PATH=Z:\` in that shell.
+If the notebook shows a video path like `Data\May\...`, that is still missing
+the drive/root. Set `LAB_DRIVE = "Z:/"` in the notebook config cell if the full
+path is `Z:\Data\May\...`, or `LAB_DRIVE = "C:/"` if the full path is
+`C:\Data\May\...`.
 
 Convert miniscope AVI files into H5:
 
