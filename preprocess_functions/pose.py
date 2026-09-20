@@ -1,16 +1,5 @@
-import os
-from pathlib import Path
 import pandas as pd
 import numpy as np
-import openpyxl
-import json
-import time
-import cv2
-import re
-import matplotlib.pyplot as plt
-import seaborn as sns
-import ipywidgets as widgets
-from IPython.display import display, clear_output
 
 #computes mouse ear midpoint, head direction & angular velocity  
 def compute_position_from_df(

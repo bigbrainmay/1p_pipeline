@@ -1,16 +1,342 @@
-import os
 from pathlib import Path
+import re
+
 import pandas as pd
 import numpy as np
-import openpyxl
-import json
-import time
-import cv2
-import re
-import matplotlib.pyplot as plt
-import seaborn as sns
-import ipywidgets as widgets
-from IPython.display import display, clear_output
+
+
+CUE_OVERRIDE_COLUMNS = ["recording_id", "cue_ts", "cue_ts_note"]
+CUE_EVENT_COLUMNS = [
+    "cue_event_idx",
+    "cue_key",
+    "cue_start_utc",
+    "cue_end_utc",
+    "cue_duration_s",
+    "cue_start_frame",
+    "cue_end_frame",
+    "cue_start_global_idx",
+    "cue_end_global_idx",
+]
+
+KEY_RE = re.compile(r"(?<![A-Za-z])([WASDwasd])(?![A-Za-z])")
+UTC_TS_RE = re.compile(
+    r"("
+    r"\d{4}-\d{2}-\d{2}"
+    r"[ T]"
+    r"\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d+)?"
+    r"(?:\s*(?:Z|UTC)|[+-]\d{2}:?\d{2})?"
+    r")"
+)
+
+
+def load_cue_timestamp_overrides(path) -> pd.DataFrame:
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame(columns=CUE_OVERRIDE_COLUMNS)
+
+    overrides = pd.read_csv(path, dtype=str).fillna("")
+    for col in CUE_OVERRIDE_COLUMNS:
+        if col not in overrides.columns:
+            overrides[col] = ""
+    return overrides
+
+
+def resolve_cue_timestamp(
+    *,
+    recording_id,
+    default_cue_ts=None,
+    cue_overrides: pd.DataFrame | None = None,
+) -> tuple[str | None, str, str | None]:
+    """
+    Return cue timestamp plus provenance.
+
+    cue_overrides should have columns recording_id, cue_ts, cue_ts_note. A
+    non-empty cue_ts in that file wins over the manifest/aligned dataframe value.
+    """
+    default_value = _clean_optional_text(default_cue_ts)
+
+    if cue_overrides is not None and not cue_overrides.empty:
+        required = {"recording_id", "cue_ts"}
+        missing = required - set(cue_overrides.columns)
+        if missing:
+            raise ValueError(f"cue_overrides is missing columns: {sorted(missing)}")
+
+        matches = cue_overrides[
+            cue_overrides["recording_id"].astype(str) == str(recording_id)
+        ]
+        matches = matches[matches["cue_ts"].astype(str).str.strip() != ""]
+        if not matches.empty:
+            row = matches.iloc[-1]
+            note = row.get("cue_ts_note", "")
+            return str(row["cue_ts"]).strip(), "manual_override", _clean_optional_text(note)
+
+    return default_value, "manifest", None
+
+
+def parse_cue_events(cue_ts, cue_duration_s: float | None = None) -> pd.DataFrame:
+    """
+    Parse cue metadata containing W/A/S/D keys and UTC timestamps.
+
+    Multiple cue events can be separated by newlines, semicolons, or pipes.
+    If cue_duration_s is None, each event's end time is the next cue start.
+    The final event has no end unless cue_duration_s is provided.
+    """
+    text = _clean_optional_text(cue_ts)
+    if text is None:
+        return pd.DataFrame(columns=CUE_EVENT_COLUMNS)
+
+    chunks = [chunk.strip() for chunk in re.split(r"[\n;|]+", text) if chunk.strip()]
+    if not chunks:
+        chunks = [text]
+
+    rows = []
+    for chunk in chunks:
+        ts_match = UTC_TS_RE.search(chunk)
+        if not ts_match:
+            continue
+
+        timestamp = pd.to_datetime(ts_match.group(1), utc=True, errors="coerce")
+        if pd.isna(timestamp):
+            continue
+
+        key_match = KEY_RE.search(chunk)
+        cue_key = key_match.group(1).upper() if key_match else None
+        rows.append(
+            {
+                "cue_key": cue_key,
+                "cue_start_utc": timestamp,
+                "raw_cue_event": chunk,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=[*CUE_EVENT_COLUMNS, "raw_cue_event"])
+
+    events = (
+        pd.DataFrame(rows)
+        .sort_values("cue_start_utc")
+        .reset_index(drop=True)
+    )
+    events.insert(0, "cue_event_idx", events.index.astype(int))
+
+    if cue_duration_s is None:
+        events["cue_end_utc"] = events["cue_start_utc"].shift(-1)
+    else:
+        events["cue_end_utc"] = (
+            events["cue_start_utc"] + pd.to_timedelta(float(cue_duration_s), unit="s")
+        )
+
+    events["cue_duration_s"] = (
+        events["cue_end_utc"] - events["cue_start_utc"]
+    ).dt.total_seconds()
+
+    for col in (
+        "cue_start_frame",
+        "cue_end_frame",
+        "cue_start_global_idx",
+        "cue_end_global_idx",
+    ):
+        events[col] = np.nan
+
+    return events
+
+
+def add_cue_event_frame_columns(
+    cue_events: pd.DataFrame,
+    df: pd.DataFrame,
+    *,
+    ts_col: str = "global_ts",
+) -> pd.DataFrame:
+    events = cue_events.copy()
+    if events.empty or ts_col not in df.columns:
+        return events
+
+    ts = pd.to_datetime(df[ts_col], utc=True, errors="coerce")
+    global_idx_values = df["global_idx"].to_numpy() if "global_idx" in df.columns else None
+
+    for event_idx, row in events.iterrows():
+        start_pos = _nearest_frame_position(ts, row.get("cue_start_utc"))
+        end_pos = _nearest_frame_position(ts, row.get("cue_end_utc"))
+
+        if start_pos is not None:
+            events.at[event_idx, "cue_start_frame"] = int(start_pos)
+            if global_idx_values is not None:
+                events.at[event_idx, "cue_start_global_idx"] = global_idx_values[start_pos]
+
+        if end_pos is not None:
+            events.at[event_idx, "cue_end_frame"] = int(end_pos)
+            if global_idx_values is not None:
+                events.at[event_idx, "cue_end_global_idx"] = global_idx_values[end_pos]
+
+    return events
+
+
+def trials_to_dataframe(
+    trials,
+    df: pd.DataFrame,
+    *,
+    recording_id=None,
+    session_id=None,
+    mouse_id=None,
+    trial_type=None,
+    cue_ts=None,
+    cue_ts_source="manifest",
+    cue_ts_note=None,
+    cue_events: pd.DataFrame | None = None,
+    cue_duration_s: float | None = None,
+    ts_col: str = "global_ts",
+    fps=30.0,
+) -> pd.DataFrame:
+    rows = []
+    if cue_events is None:
+        cue_events = parse_cue_events(cue_ts, cue_duration_s=cue_duration_s)
+    cue_events = add_cue_event_frame_columns(cue_events, df, ts_col=ts_col)
+
+    for trial_idx, trial in enumerate(trials):
+        if isinstance(trial, dict):
+            start_frame = int(trial["start_frame"])
+            end_frame = int(trial["end_frame"])
+            start_side = trial.get("start_side")
+            end_side = trial.get("end_side")
+        else:
+            start_frame, end_frame = map(int, trial)
+            start_side = None
+            end_side = None
+
+        row = {
+            "recording_id": recording_id,
+            "session_id": session_id,
+            "mouse_id": mouse_id,
+            "trial_idx": int(trial_idx),
+            "start_frame": start_frame,
+            "end_frame": end_frame,
+            "start_side": start_side,
+            "end_side": end_side,
+            "trial_type": trial_type,
+            "cue_ts": cue_ts,
+            "cue_ts_source": cue_ts_source,
+            "cue_ts_note": cue_ts_note,
+            "duration_frames": int(end_frame - start_frame + 1),
+            "duration_s": float((end_frame - start_frame + 1) / fps) if fps else np.nan,
+        }
+
+        for col in ("global_ts", "global_idx", "beh_frame_idx", "neu_frame_idx"):
+            if col in df.columns:
+                row[f"start_{col}"] = _safe_row_value(df, start_frame, col)
+                row[f"end_{col}"] = _safe_row_value(df, end_frame, col)
+
+        cue_row = _cue_event_for_trial(
+            cue_events,
+            df,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            ts_col=ts_col,
+        )
+        row.update(_cue_row_to_trial_columns(cue_row))
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def _cue_event_for_trial(
+    cue_events: pd.DataFrame,
+    df: pd.DataFrame,
+    *,
+    start_frame: int,
+    end_frame: int,
+    ts_col: str = "global_ts",
+) -> pd.Series | None:
+    if cue_events is None or cue_events.empty:
+        return None
+
+    frame_matches = pd.Series(False, index=cue_events.index)
+    if "cue_start_frame" in cue_events.columns:
+        cue_start_frame = pd.to_numeric(cue_events["cue_start_frame"], errors="coerce")
+        frame_matches |= cue_start_frame.between(start_frame, end_frame, inclusive="both")
+    if "cue_end_frame" in cue_events.columns:
+        cue_end_frame = pd.to_numeric(cue_events["cue_end_frame"], errors="coerce")
+        cue_start_frame = pd.to_numeric(cue_events["cue_start_frame"], errors="coerce")
+        frame_matches |= (
+            cue_start_frame.notna()
+            & cue_end_frame.notna()
+            & (cue_start_frame <= end_frame)
+            & (cue_end_frame >= start_frame)
+        )
+    if frame_matches.any():
+        return cue_events.loc[frame_matches].iloc[0]
+
+    if ts_col in df.columns:
+        trial_start = pd.to_datetime(_safe_row_value(df, start_frame, ts_col), utc=True, errors="coerce")
+        trial_end = pd.to_datetime(_safe_row_value(df, end_frame, ts_col), utc=True, errors="coerce")
+        if pd.notna(trial_start) and pd.notna(trial_end):
+            cue_start = pd.to_datetime(cue_events["cue_start_utc"], utc=True, errors="coerce")
+            cue_end = pd.to_datetime(cue_events["cue_end_utc"], utc=True, errors="coerce")
+            overlap = (
+                (cue_start <= trial_end)
+                & (
+                    cue_end.ge(trial_start)
+                    | (cue_end.isna() & cue_start.ge(trial_start))
+                )
+            )
+            if overlap.any():
+                return cue_events.loc[overlap].iloc[0]
+
+    if len(cue_events) == 1:
+        return cue_events.iloc[0]
+    return None
+
+
+def _cue_row_to_trial_columns(cue_row: pd.Series | None) -> dict:
+    values = {col: np.nan for col in CUE_EVENT_COLUMNS}
+    if cue_row is None:
+        return values
+
+    for col in CUE_EVENT_COLUMNS:
+        if col in cue_row:
+            values[col] = cue_row[col]
+    return values
+
+
+def _clean_optional_text(value):
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+    text = str(value).strip()
+    if text.lower() in {"", "nan", "none", "null", "na", "n/a"}:
+        return None
+    return text
+
+
+def _safe_row_value(df: pd.DataFrame, row_idx: int, col: str):
+    if row_idx < 0 or row_idx >= len(df):
+        return np.nan
+    value = df.iloc[row_idx][col]
+    if pd.isna(value):
+        return np.nan
+    return value
+
+
+def _nearest_frame_position(ts: pd.Series, value):
+    if value is None or pd.isna(value):
+        return None
+    target = pd.to_datetime(value, utc=True, errors="coerce")
+    if pd.isna(target):
+        return None
+
+    deltas = (ts - target).abs()
+    valid = deltas.notna()
+    if not valid.any():
+        return None
+    valid_positions = np.flatnonzero(valid.to_numpy())
+    closest_valid_position = int(np.argmin(deltas[valid].to_numpy()))
+    return int(valid_positions[closest_valid_position])
+
 
 #fills false frame gaps in ROI mask if surrounded by valid xy coordinates
 def fill_short_gaps(mask: np.ndarray, gap_frames: int) -> np.ndarray:

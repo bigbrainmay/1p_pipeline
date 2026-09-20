@@ -46,6 +46,18 @@ def filter_points_by_mask(df, mask, x_col, y_col):
     return df.loc[inside].copy()
 
 
+def _load_plot_dataframe(df_or_csv):
+    if isinstance(df_or_csv, (str, Path)):
+        return pd.read_csv(df_or_csv)
+    return df_or_csv.copy()
+
+
+def _numeric_column(df, col):
+    if col not in df.columns:
+        raise ValueError(f"Missing column {col!r}. Found: {df.columns.tolist()}")
+    return pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=float)
+
+
 def plot_trajectory_over_arena(
     df_or_csv,
     masks=None,
@@ -188,6 +200,70 @@ def plot_head_direction_over_arena(
     plt.show()
 
 
+def plot_trajectory(
+    df_or_csv,
+    masks=None,
+    x_col: str = "ear_mid_x",
+    y_col: str = "ear_mid_y",
+    ts_col: str = "global_idx",
+    use_mask_filter: bool = False,
+    mask_name: str = "in_arena",
+    downsample: int = 1,
+    mask_alpha: float = 0.05,
+    cmap: str = "viridis",
+    date_col: str = "session_id",
+):
+    """Plot the animal trajectory over the first behavior-video frame."""
+    return plot_trajectory_over_arena(
+        df_or_csv,
+        masks=masks,
+        x_col=x_col,
+        y_col=y_col,
+        ts_col=ts_col,
+        use_mask_filter=use_mask_filter,
+        mask_name=mask_name,
+        downsample=downsample,
+        mask_alpha=mask_alpha,
+        cmap=cmap,
+        date_col=date_col,
+    )
+
+
+def plot_hd_trajectory(
+    df_or_csv,
+    masks=None,
+    x_col: str = "ear_mid_x",
+    y_col: str = "ear_mid_y",
+    angle_col: str = "head_dir_rad",
+    ts_col: str = "global_idx",
+    use_mask_filter: bool = False,
+    mask_name: str = "in_arena",
+    downsample: int = 2,
+    arrow_len: float = 30.0,
+    mask_alpha: float = 0.05,
+    cmap: str = "viridis",
+    date_col: str = "session_id",
+    title: str | None = None,
+):
+    """Plot head-direction arrows over the animal trajectory."""
+    return plot_head_direction_over_arena(
+        df_or_csv,
+        masks=masks,
+        x_col=x_col,
+        y_col=y_col,
+        angle_col=angle_col,
+        ts_col=ts_col,
+        use_mask_filter=use_mask_filter,
+        mask_name=mask_name,
+        downsample=downsample,
+        arrow_len=arrow_len,
+        mask_alpha=mask_alpha,
+        cmap=cmap,
+        date_col=date_col,
+        title=title,
+    )
+
+
 def trial_viewer(
     aligned_sessions_with_rois,
     trials_by_session,
@@ -263,7 +339,7 @@ def trial_viewer(
             .copy()
         )
 
-        plot_head_direction_over_arena(
+        plot_hd_trajectory(
             df_trial,
             masks=masks_by_session[session],
             x_col=x_col,
@@ -396,6 +472,306 @@ def _plot_head_direction_tuning(ax, head_dir, activity, n_bins, cell_col):
     ax.grid(False)
     ax.set_title(f"{cell_col} head direction tuning")
     return centers, tuning
+
+
+def plot_2d_ratemap(
+    df_or_csv,
+    cell_col="cell_0",
+    x_col="ear_mid_x",
+    y_col="ear_mid_y",
+    bins=20,
+    arena_mask=None,
+    arena_mask_name="arena",
+    occupancy_min=1,
+    cmap="viridis",
+    ax=None,
+    title=None,
+    show=True,
+):
+    """Plot an occupancy-normalized 2D activity map for one cell."""
+    df = _load_plot_dataframe(df_or_csv)
+    required = [x_col, y_col, cell_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns: {missing}. Found: {df.columns.tolist()}")
+
+    x = _numeric_column(df, x_col)
+    y = _numeric_column(df, y_col)
+    activity = _numeric_column(df, cell_col)
+    valid = np.isfinite(x) & np.isfinite(y) & np.isfinite(activity)
+
+    if arena_mask is not None:
+        mask = _arena_mask_array(arena_mask, mask_name=arena_mask_name)
+        valid &= _points_inside_mask(mask, x, y)
+
+    if not valid.any():
+        raise ValueError("No valid points available for the 2D ratemap")
+
+    x_plot = x[valid]
+    y_plot = y[valid]
+    activity_plot = activity[valid]
+
+    x_edges = np.linspace(np.nanmin(x_plot), np.nanmax(x_plot), bins + 1)
+    y_edges = np.linspace(np.nanmin(y_plot), np.nanmax(y_plot), bins + 1)
+    occupancy, _, _ = np.histogram2d(x_plot, y_plot, bins=[x_edges, y_edges])
+    activity_sum, _, _ = np.histogram2d(
+        x_plot,
+        y_plot,
+        bins=[x_edges, y_edges],
+        weights=activity_plot,
+    )
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mean_activity = activity_sum / occupancy
+    mean_activity[occupancy < occupancy_min] = np.nan
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(6, 6))
+
+    im = ax.imshow(
+        mean_activity.T,
+        origin="lower",
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+        aspect="equal",
+        cmap=cmap,
+    )
+    ax.set_title(title or f"{cell_col} 2D ratemap")
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    plt.colorbar(im, ax=ax, label=f"mean {cell_col} activity")
+
+    if show:
+        plt.show()
+    return ax
+
+
+def plot_hd(
+    df_or_csv,
+    cell_col="cell_0",
+    head_dir_col="head_dir_rad",
+    n_bins=36,
+    ax=None,
+    title=None,
+    show=True,
+):
+    """Plot head-direction tuning for one cell."""
+    df = _load_plot_dataframe(df_or_csv)
+    head_dir = _numeric_column(df, head_dir_col)
+    activity = _numeric_column(df, cell_col)
+    valid = np.isfinite(head_dir) & np.isfinite(activity)
+
+    if not valid.any():
+        raise ValueError("No valid head-direction/activity samples available")
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(6, 6), subplot_kw={"projection": "polar"})
+
+    _plot_head_direction_tuning(
+        ax,
+        head_dir[valid],
+        activity[valid],
+        n_bins,
+        cell_col,
+    )
+    if title is not None:
+        ax.set_title(title)
+
+    if show:
+        plt.show()
+    return ax
+
+
+def plot_hd_tuning(*args, **kwargs):
+    """Alias for plot_hd."""
+    return plot_hd(*args, **kwargs)
+
+
+def _compute_ebc_map_for_plot(
+    df_or_csv,
+    arena_mask,
+    cell_col="cell_0",
+    angle_bins=36,
+    distance_bins=20,
+    distance_max_px=None,
+    boundary_stride=1,
+    frame_stride=1,
+    chunk_size=128,
+    x_col="ear_mid_x",
+    y_col="ear_mid_y",
+    nose_x_col="nose.x",
+    nose_y_col="nose.y",
+    cell_dropped_col="cell_dropped",
+    mask_name="arena",
+):
+    df = _load_plot_dataframe(df_or_csv)
+    mask = _arena_mask_array(arena_mask, mask_name=mask_name)
+    return boundary_tuning.compute_egocentric_boundary_map(
+        df,
+        mask,
+        cell_col=cell_col,
+        angle_bins=angle_bins,
+        distance_bins=distance_bins,
+        distance_max_px=distance_max_px,
+        boundary_stride=boundary_stride,
+        frame_stride=frame_stride,
+        chunk_size=chunk_size,
+        x_col=x_col,
+        y_col=y_col,
+        nose_x_col=nose_x_col,
+        nose_y_col=nose_y_col,
+        cell_dropped_col=cell_dropped_col,
+    )
+
+
+def plot_ebc(
+    df_or_csv,
+    arena_mask,
+    cell_col="cell_0",
+    angle_bins=36,
+    distance_bins=20,
+    distance_max_px=None,
+    boundary_stride=1,
+    frame_stride=1,
+    chunk_size=128,
+    x_col="ear_mid_x",
+    y_col="ear_mid_y",
+    nose_x_col="nose.x",
+    nose_y_col="nose.y",
+    cell_dropped_col="cell_dropped",
+    arena_mask_name="arena",
+    occupancy_min=1,
+    radius_max=None,
+    smooth_sigma=None,
+    cmap="viridis",
+    ax=None,
+    show=True,
+):
+    """Plot an egocentric boundary-cell map as a polar plot."""
+    egocentric_map = _compute_ebc_map_for_plot(
+        df_or_csv,
+        arena_mask,
+        cell_col=cell_col,
+        angle_bins=angle_bins,
+        distance_bins=distance_bins,
+        distance_max_px=distance_max_px,
+        boundary_stride=boundary_stride,
+        frame_stride=frame_stride,
+        chunk_size=chunk_size,
+        x_col=x_col,
+        y_col=y_col,
+        nose_x_col=nose_x_col,
+        nose_y_col=nose_y_col,
+        cell_dropped_col=cell_dropped_col,
+        mask_name=arena_mask_name,
+    )
+    return boundary_tuning.plot_egocentric_boundary_polar(
+        egocentric_map,
+        ax=ax,
+        cmap=cmap,
+        occupancy_min=occupancy_min,
+        radius_max=radius_max,
+        smooth_sigma=smooth_sigma,
+        show=show,
+    )
+
+
+def plot_ebc_heatmap(
+    df_or_csv,
+    arena_mask,
+    cell_col="cell_0",
+    angle_bins=36,
+    distance_bins=20,
+    distance_max_px=None,
+    boundary_stride=1,
+    frame_stride=1,
+    chunk_size=128,
+    x_col="ear_mid_x",
+    y_col="ear_mid_y",
+    nose_x_col="nose.x",
+    nose_y_col="nose.y",
+    cell_dropped_col="cell_dropped",
+    arena_mask_name="arena",
+    occupancy_min=1,
+    cmap="viridis",
+    ax=None,
+    show=True,
+):
+    """Plot an egocentric boundary-cell map as angle x distance heatmap."""
+    egocentric_map = _compute_ebc_map_for_plot(
+        df_or_csv,
+        arena_mask,
+        cell_col=cell_col,
+        angle_bins=angle_bins,
+        distance_bins=distance_bins,
+        distance_max_px=distance_max_px,
+        boundary_stride=boundary_stride,
+        frame_stride=frame_stride,
+        chunk_size=chunk_size,
+        x_col=x_col,
+        y_col=y_col,
+        nose_x_col=nose_x_col,
+        nose_y_col=nose_y_col,
+        cell_dropped_col=cell_dropped_col,
+        mask_name=arena_mask_name,
+    )
+    return boundary_tuning.plot_egocentric_boundary_map(
+        egocentric_map,
+        ax=ax,
+        cmap=cmap,
+        occupancy_min=occupancy_min,
+        show=show,
+    )
+
+
+def plot_ebc_occupancy(
+    df_or_csv,
+    arena_mask,
+    cell_col="cell_0",
+    angle_bins=36,
+    distance_bins=20,
+    distance_max_px=None,
+    boundary_stride=1,
+    frame_stride=1,
+    chunk_size=128,
+    x_col="ear_mid_x",
+    y_col="ear_mid_y",
+    nose_x_col="nose.x",
+    nose_y_col="nose.y",
+    cell_dropped_col="cell_dropped",
+    arena_mask_name="arena",
+    cmap="magma",
+    ax=None,
+    show=True,
+):
+    """Plot EBC sample occupancy for checking map coverage."""
+    egocentric_map = _compute_ebc_map_for_plot(
+        df_or_csv,
+        arena_mask,
+        cell_col=cell_col,
+        angle_bins=angle_bins,
+        distance_bins=distance_bins,
+        distance_max_px=distance_max_px,
+        boundary_stride=boundary_stride,
+        frame_stride=frame_stride,
+        chunk_size=chunk_size,
+        x_col=x_col,
+        y_col=y_col,
+        nose_x_col=nose_x_col,
+        nose_y_col=nose_y_col,
+        cell_dropped_col=cell_dropped_col,
+        mask_name=arena_mask_name,
+    )
+    return boundary_tuning.plot_egocentric_boundary_occupancy(
+        egocentric_map,
+        ax=ax,
+        cmap=cmap,
+        show=show,
+    )
+
+
+def plot_cell_summary(*args, **kwargs):
+    """Plot trajectory, occupancy, trace, 2D ratemap, EBC, and HD panels."""
+    return plot_trajectory_coverage_with_cell(*args, **kwargs)
 
 
 def plot_trajectory_coverage_with_cell(
@@ -647,3 +1023,14 @@ def plot_trajectory_coverage_with_cell(
     if show:
         plt.show()
     return fig, axes
+
+
+plot_2d_rate_map = plot_2d_ratemap
+plot_2D_ratemap = plot_2d_ratemap
+plot_EBC = plot_ebc
+plot_EBC_heatmap = plot_ebc_heatmap
+plot_EBC_occupancy = plot_ebc_occupancy
+plot_HD = plot_hd
+plot_HD_tuning = plot_hd_tuning
+EBCplot = plot_ebc
+HDplot = plot_hd

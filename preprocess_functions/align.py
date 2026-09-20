@@ -1,22 +1,16 @@
 import os
+import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import openpyxl
-import json
-import time
-import cv2
-import re
-import matplotlib.pyplot as plt
-import seaborn as sns
-import ipywidgets as widgets
-from IPython.display import display, clear_output
+
+from .manifest import add_manifest_ids, normalize_manifest_table
+
+
+LAB_RELATIVE_ROOTS = {"data", "users"}
 
 #fixes lab path string
 def resolve_lab_path(p, lab_drive=None):
-    if lab_drive is None:
-        lab_drive = Path(os.environ.get("LAB_DRIVE_PATH", "Z:"))
-
     if pd.isna(p) or p is None:
         return None
 
@@ -25,8 +19,13 @@ def resolve_lab_path(p, lab_drive=None):
     if p == "":
         return None
 
-    # already absolute (Z:\...)
-    if len(p) >= 2 and p[1] == ":":
+    lab_drive_value = lab_drive or os.environ.get("LAB_DRIVE_PATH")
+    lab_drive_path = Path(lab_drive_value) if lab_drive_value else None
+
+    drive_match = re.match(r"^[A-Za-z]:[\\/]*(.*)$", p)
+    if drive_match:
+        if lab_drive_path:
+            return lab_drive_path.joinpath(*_split_lab_path_parts(drive_match.group(1)))
         return Path(p)
 
     # true UNC path (\\server\share)
@@ -34,8 +33,18 @@ def resolve_lab_path(p, lab_drive=None):
         return Path(p)
 
     # relative lab path (\Data\...)
-    p = p.lstrip("\\/")
-    return lab_drive / p
+    parts = _split_lab_path_parts(p.lstrip("\\/"))
+    if (
+        lab_drive_path
+        and parts
+        and (p.startswith(("\\", "/")) or parts[0].lower() in LAB_RELATIVE_ROOTS)
+    ):
+        return lab_drive_path.joinpath(*parts)
+    return Path(*parts) if parts else None
+
+
+def _split_lab_path_parts(p):
+    return [part for part in re.split(r"[\\/]+", str(p)) if part]
 
 #loads in excel sheets as dictionary, adds session_id & mouse_id columns, checks for beh and sleap csvs, returns dictionary
 def load_sessions(sheet_path, date_col="date"):
@@ -44,31 +53,14 @@ def load_sessions(sheet_path, date_col="date"):
     all_sheets = pd.read_excel(sheet_path, sheet_name=None, engine="openpyxl")
 
     for mouse_name, df in all_sheets.items():
-        df = df.copy().dropna(how="all")
+        df = normalize_manifest_table(df, sheet_name=mouse_name)
         if df.empty:
             continue
-
-        # clean column names
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.lower()
-            .str.replace(" ", "_", regex=False)
-        )
-
-        df["mouse_id"] = mouse_name
 
         if date_col in df.columns:
             df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
 
-        if "session_id" not in df.columns:
-            if date_col in df.columns:
-                df["session_id"] = (
-                    df["mouse_id"].astype(str) + "_" +
-                    df[date_col].dt.strftime("%Y%m%d")
-                )
-            else:
-                df["session_id"] = df["mouse_id"].astype(str) + "_" + df.index.astype(str)
+        df = add_manifest_ids(df)
 
         required = ["beh_csv", "sleap_csv"]
         missing = [c for c in required if c not in df.columns]
@@ -292,6 +284,7 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
     for mouse_names, df in sessions.items():
         for _, row in df.iterrows():
             session_id = row["session_id"]
+            recording_id = row.get("recording_id", session_id)
 
             beh_path = resolve_lab_path(row["beh_csv"])
             sleap_path = resolve_lab_path(row["sleap_csv"])
@@ -299,7 +292,8 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
             cell_path = resolve_lab_path(row["cell_csv"]) if pd.notna(row["cell_csv"]) else None
             beh_vid = resolve_lab_path(row["beh_vid"]) if pd.notna(row["beh_vid"]) else None
 
-            print(f"\nSession: {session_id}")
+            print(f"\nRecording: {recording_id}")
+            print("session_id:", session_id)
             print("beh_path  :", beh_path)
             print("sleap_path:", sleap_path)
             print("neu_path  :", neu_path)
@@ -316,10 +310,15 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
             )
 
             aligned["session_id"] = session_id
+            aligned["recording_id"] = recording_id
             aligned["beh_vid_path"] = str(beh_vid) if beh_vid is not None else None
             if "mouse_id" in row:
                 aligned["mouse_id"] = row["mouse_id"]
+            if "trial_type" in row:
+                aligned["trial_type"] = row["trial_type"]
+            if "cue_ts" in row:
+                aligned["cue_ts"] = row["cue_ts"]
 
-            aligned_by_session[session_id] = aligned
+            aligned_by_session[recording_id] = aligned
 
     return aligned_by_session
