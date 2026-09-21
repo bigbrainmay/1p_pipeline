@@ -88,10 +88,14 @@ Run MATLAB extraction over the H5 files:
 python scripts/run_matlab_neural_extraction.py preprocess_out/manifest_with_h5.csv \
   --matlab-script matlab/run_extract_template.m \
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
-  --output-root preprocess_out
+  --output-root preprocess_out \
+  --extra extract_use_gpu=1 \
+  --extra extract_gpu_forward_compatibility=1
 ```
 
 The MATLAB runner also defaults to that local H5 path under `--output-root`.
+The template enables MATLAB CUDA forward compatibility when GPU extraction is
+enabled, because that setting is not persistent between MATLAB sessions.
 The template calls `matlab/run_extract_one_record.m`, which wraps:
 
 1. `preprocess_save("<recording>.h5:/data", config)`
@@ -106,14 +110,18 @@ addpath('matlab')
 run_extract_batch_from_index( ...
     'preprocess_out/manifest_with_h5.csv', ...
     'preprocess_out', ...
-    'Only', 'RECORDING_ID');
+    'Only', 'RECORDING_ID', ...
+    'GpuForwardCompatibility', 1);
 ```
 
 Then run all rows:
 
 ```matlab
 addpath('matlab')
-run_extract_batch_from_index('preprocess_out/manifest_with_h5.csv', 'preprocess_out');
+run_extract_batch_from_index( ...
+    'preprocess_out/manifest_with_h5.csv', ...
+    'preprocess_out', ...
+    'GpuForwardCompatibility', 1);
 ```
 
 Both routes write MATLAB outputs under:

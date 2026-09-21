@@ -35,6 +35,8 @@ fprintf('Input H5:      %s\n', neu_h5_path);
 fprintf('Final H5:      %s\n', final_h5_path);
 fprintf('Output MAT:    %s\n', precomputed_output_path);
 
+configure_gpu_forward_compatibility(opts.UseGpu, opts.GpuForwardCompatibility);
+
 if opts.Overwrite || ~exist(final_h5_path, 'file')
     fprintf('Preprocessing %s\n', preprocess_input);
     preprocess_config = get_defaults([]);
@@ -104,6 +106,7 @@ function opts = parse_options(varargin)
 p = inputParser;
 p.addParameter('DatasetPath', '/data');
 p.addParameter('UseGpu', 1);
+p.addParameter('GpuForwardCompatibility', 1);
 p.addParameter('Overwrite', false);
 p.addParameter('AvgCellRadius', 5);
 p.addParameter('NumPartitionsX', 3);
@@ -125,6 +128,7 @@ p.parse(varargin{:});
 opts = p.Results;
 
 opts.UseGpu = numeric_flag(opts.UseGpu);
+opts.GpuForwardCompatibility = logical_flag(opts.GpuForwardCompatibility);
 opts.Overwrite = logical_flag(opts.Overwrite);
 opts.UseSparseArrays = numeric_flag(opts.UseSparseArrays);
 opts.ArbitraryMask = numeric_flag(opts.ArbitraryMask);
@@ -143,6 +147,24 @@ opts.AdaptiveKappa = numeric_value(opts.AdaptiveKappa);
 opts.TMinSnr = numeric_value(opts.TMinSnr);
 opts.SizeUpperLimit = numeric_value(opts.SizeUpperLimit);
 opts.SizeLowerLimit = numeric_value(opts.SizeLowerLimit);
+end
+
+
+function configure_gpu_forward_compatibility(use_gpu, enable_forward_compatibility)
+if ~logical(use_gpu)
+    return
+end
+
+try
+    parallel.gpu.enableCUDAForwardCompatibility(enable_forward_compatibility);
+    tf = parallel.gpu.enableCUDAForwardCompatibility;
+    fprintf('GPU CUDA forward compatibility: %d\n', tf);
+catch ME
+    warning( ...
+        'run_extract_one_record:GpuForwardCompatibility', ...
+        'Could not set GPU CUDA forward compatibility: %s', ...
+        ME.message);
+end
 end
 
 
