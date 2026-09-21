@@ -192,6 +192,26 @@ python scripts/build_aligned_sessions.py preprocess_out/manifest_with_cells.csv 
   --output-root preprocess_out
 ```
 
+Open `20260919_dataframe_construction.ipynb` and run the **Collect or Load
+Arena ROIs** section for each recording before trial segmentation. The OpenCV
+GUI saves:
+
+```text
+arena_rois/<recording_id>__arena.json
+arena_rois/<recording_id>__startbox_L.json
+arena_rois/<recording_id>__startbox_R.json
+```
+
+That notebook adds these columns to the aligned session CSV:
+
+```text
+in_arena, in_startbox_L, in_startbox_R, arena_only
+```
+
+`20260919_visualize.ipynb` can also collect/load those same ROI files for
+plotting. It uses ROI features in memory by default and only writes them back to
+the aligned CSV if `SAVE_ROI_FEATURES_TO_ALIGNED_CSV = True`.
+
 Segment trials and save cue/trial metadata:
 
 ```bash

@@ -121,6 +121,50 @@ def load_or_collect_roi(video_path, roi_name, session_id, title=None, root=None,
     _, points = collect_roi_opencv(video_path, json_path, title=title)
     return points, json_path
 
+
+def load_or_collect_named_rois(
+    video_path,
+    session_id,
+    roi_names=("arena", "startbox_L", "startbox_R"),
+    root=None,
+    folder_name="arena_rois",
+):
+    rois = {}
+    roi_paths = {}
+    for roi_name in roi_names:
+        points, json_path = load_or_collect_roi(
+            video_path=video_path,
+            roi_name=roi_name,
+            session_id=session_id,
+            title=f"{session_id} - {roi_name} ROI (L-add, R-undo, s-save, q-quit)",
+            root=root,
+            folder_name=folder_name,
+        )
+        rois[roi_name] = np.asarray(points, dtype=np.float32)
+        roi_paths[roi_name] = json_path
+    return rois, roi_paths
+
+
+def add_arena_only_column(
+    df,
+    *,
+    arena_col="in_arena",
+    startbox_left_col="in_startbox_L",
+    startbox_right_col="in_startbox_R",
+    output_col="arena_only",
+):
+    out = df.copy()
+    required = {arena_col, startbox_left_col, startbox_right_col}
+    missing = required - set(out.columns)
+    if missing:
+        raise KeyError(f"Missing ROI columns for {output_col}: {sorted(missing)}")
+    out[output_col] = (
+        out[arena_col].fillna(False).astype(bool)
+        & ~out[startbox_left_col].fillna(False).astype(bool)
+        & ~out[startbox_right_col].fillna(False).astype(bool)
+    )
+    return out
+
 #loads multiple ROIs for each session from dictionaryu of sessions
 def collect_rois_for_sessions(
     sessions_df,
@@ -338,4 +382,3 @@ def add_rois_to_all_sessions(
         print(f"{session_id}: added ROI features for {list(polys.keys())} (H,W=({H},{W}))")
 
     return aligned_with_rois, masks_by_session
-
