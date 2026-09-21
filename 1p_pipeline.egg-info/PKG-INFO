@@ -27,7 +27,7 @@ Requires-Dist: ipywidgets==8.1.8
 Requires-Dist: jupyterlab_widgets==3.0.16
 Requires-Dist: openpyxl==3.1.5
 Requires-Dist: opencv-python==4.13.0.92
-Requires-Dist: oasis-deconv==0.2.1
+Requires-Dist: oasis-deconv==0.3.2
 Requires-Dist: h5py==3.14.0
 Requires-Dist: seaborn==0.13.2
 

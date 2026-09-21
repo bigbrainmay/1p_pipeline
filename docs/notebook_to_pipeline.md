@@ -150,6 +150,41 @@ python scripts/import_curated_neurons.py preprocess_out/manifest_with_matlab.csv
   --output-root preprocess_out
 ```
 
+Optional: register accepted neurons across sessions for one mouse with CaImAn.
+This step uses EXTRACT spatial footprints plus ActSort labels. It is a sidecar
+analysis output, not a requirement for database/dataframe formation.
+
+```bash
+python scripts/register_cells_across_sessions.py preprocess_out/manifest_with_cells.csv \
+  --output-root preprocess_out \
+  --only C57-3-1-A
+```
+
+Run this from a CaImAn environment. If CaImAn is not installed, the script skips
+registration by default and writes `preprocess_out/coregistration_index.csv`
+with `status=skipped_missing_caiman`; the next dataframe step can still run.
+Use `--require-caiman` when you want a missing CaImAn install to fail loudly.
+For example, from the repo folder on the GPU PC:
+
+```bash
+conda activate caiman
+python scripts/register_cells_across_sessions.py preprocess_out/manifest_with_cells.csv \
+  --output-root preprocess_out \
+  --only C57-3-1-A
+```
+
+The registration table is written here:
+
+```text
+preprocess_out/coregistration/<mouse_id>/<mouse_id>_cell_registration.csv
+```
+
+It maps each session-local EXTRACT/ActSort cell to a cross-session identity:
+
+```text
+mouse_id, registered_cell_id, recording_id, session_id, component_idx, cell_col
+```
+
 Build aligned behavior, SLEAP, and neural CSVs:
 
 ```bash
