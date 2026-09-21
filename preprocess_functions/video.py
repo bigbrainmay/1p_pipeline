@@ -159,7 +159,8 @@ def convert_avi_to_h5(
             ):
                 _write_gap_frames(dset, source_frame_idx, output_frame_count, last_valid_frame)
 
-            h5f.create_dataset(
+            pipeline_group = h5f.create_group("pipeline")
+            pipeline_group.create_dataset(
                 "valid_frame_mask",
                 data=valid_frame_mask.astype(np.uint8, copy=False),
                 compression=compression,
@@ -205,6 +206,56 @@ def convert_avi_to_h5(
         "corruption_status": (
             corruption_report["status"] if corruption_report is not None else "not_checked"
         ),
+    }
+
+
+def repair_extract_h5_layout(
+    h5_path: str | Path,
+    *,
+    mask_dataset_name: str = "valid_frame_mask",
+    metadata_group_name: str = "pipeline",
+) -> dict[str, Any]:
+    """
+    Move pipeline metadata out of the H5 root so EXTRACT's preprocess_save works.
+
+    EXTRACT's MATLAB ``preprocess_save`` assumes the H5 root has one dataset. Our
+    older converter wrote both ``/data`` and ``/valid_frame_mask`` at the root,
+    which makes MATLAB's ``hinfo.Datasets.Dataspace...`` indexing fail. Moving
+    the mask to ``/pipeline/valid_frame_mask`` preserves the frame-validity
+    bookkeeping without changing the movie data.
+    """
+    import h5py
+
+    h5_path = Path(h5_path)
+    with h5py.File(h5_path, "r+") as h5f:
+        root_datasets_before = [
+            name for name, obj in h5f.items() if hasattr(obj, "shape")
+        ]
+        source_path = f"/{mask_dataset_name}"
+        target_path = f"/{metadata_group_name}/{mask_dataset_name}"
+
+        moved = False
+        removed_root_mask = False
+        if mask_dataset_name in h5f and target_path not in h5f:
+            h5f.require_group(metadata_group_name)
+            h5f.move(source_path, target_path)
+            moved = True
+        elif mask_dataset_name in h5f and target_path in h5f:
+            del h5f[mask_dataset_name]
+            removed_root_mask = True
+
+        root_datasets_after = [
+            name for name, obj in h5f.items() if hasattr(obj, "shape")
+        ]
+
+    return {
+        "h5_path": str(h5_path),
+        "status": "repaired" if moved or removed_root_mask else "already_compatible",
+        "moved": moved,
+        "removed_root_mask": removed_root_mask,
+        "root_datasets_before": root_datasets_before,
+        "root_datasets_after": root_datasets_after,
+        "mask_path": target_path,
     }
 
 

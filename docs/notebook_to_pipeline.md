@@ -73,7 +73,7 @@ copy of the first clean frame, so frame count and shape stay stable for EXTRACT
 without preserving the corrupt image content. The H5 also contains:
 
 ```text
-valid_frame_mask
+/pipeline/valid_frame_mask
 ```
 
 where `0` means a gap placeholder and `1` means a real decoded frame. This keeps
@@ -81,6 +81,16 @@ H5 frame `n` aligned with neural timestamp row `n`.
 
 If a spreadsheet already has a `neu_h5` column, it is ignored unless you pass
 `--use-manifest-h5`.
+
+Older converted H5 files may have `/valid_frame_mask` at the H5 root. EXTRACT's
+`preprocess_save` expects only the movie dataset at the root, so repair those H5
+files before MATLAB extraction:
+
+```bash
+python scripts/repair_miniscope_h5_for_extract.py preprocess_out/manifest_with_h5.csv \
+  --output-root preprocess_out \
+  --use-manifest-h5
+```
 
 Run MATLAB extraction over the H5 files:
 
@@ -352,7 +362,7 @@ import h5py
 h5_path = "preprocess_out/RECORDING_ID/neural/RECORDING_ID_miniscope.h5"
 with h5py.File(h5_path, "r") as f:
     print("data shape:", f["data"].shape)
-    print("valid mask shape:", f["valid_frame_mask"].shape)
+    print("valid mask shape:", f["pipeline"]["valid_frame_mask"].shape)
     print("gapped leading frames:", f.attrs["gapped_leading_frames"])
     print("valid frames:", f.attrs["valid_frame_count"])
 PY
