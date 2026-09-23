@@ -52,6 +52,17 @@ python scripts/convert_miniscope_avi_to_h5.py data_paths/RSC_PPC_Cohort1_paths.x
   --output-root preprocess_out
 ```
 
+New H5 movies are written as `uint8` by default. EXTRACT's MATLAB
+`preprocess_save` reads H5 chunks and converts them to `single` internally, so
+the input H5 does not need to be stored as float32. If you want smaller local
+scratch files while converting, add fast HDF5 compression:
+
+```bash
+python scripts/convert_miniscope_avi_to_h5.py data_paths/RSC_PPC_Cohort1_paths.xlsx \
+  --output-root preprocess_out \
+  --compression lzf
+```
+
 Optional preflight: check which videos have bad leading frames before converting:
 
 ```bash
@@ -110,7 +121,8 @@ The template calls `matlab/run_extract_one_record.m`, which wraps:
 
 1. `preprocess_save("<recording>.h5:/data", config)`
 2. `extractor({"<recording>_final.h5", "/data"}, config)`
-3. saving `<recording_id>_precomputed_output.mat` for Python import
+3. saving `<recording_id>_extract_output_unsorted.mat` for Python import and
+   as the source for ActSort/manualActSort curation
 
 If you prefer to loop inside MATLAB on the GPU PC, open MATLAB from the repo root
 and run one recording first:
@@ -145,20 +157,25 @@ Use your MATLAB versions as two separate stages:
 1. **R2025b**: run EXTRACT/GPU preprocessing and extraction.
 2. **R2021b**: open ActSort/manualActSort and curate the saved unsorted output.
 
-The EXTRACT stage saves two files for each recording:
+The EXTRACT stage saves the raw unsorted EXTRACT output for each recording:
 
-- `<recording_id>_precomputed_output.mat`: pipeline import target.
 - `<recording_id>_extract_output_unsorted.mat`: unsorted EXTRACT output with an
-  `output` variable for ActSort/manualActSort.
+  `output` variable for Python import and as the source for
+  ActSort/manualActSort curation.
 
 Then do the manual curation checkpoint in MATLAB:
 
 1. Run Schnitzer lab EXTRACT-public for each H5 in R2025b.
 2. Open R2021b.
-3. Open ActSort/manualActSort on the unsorted EXTRACT output.
+3. Use ActSort/manualActSort's normal load/precompute workflow starting from the
+   unsorted EXTRACT output.
 4. Manually classify accepted cells and rejected components.
 5. Save labels as `<recording_id>_precomputed_output_LABELS.mat` in that
    recording's MATLAB output directory.
+
+ActSort may also create `<recording_id>_precomputed_output.mat`. That file is
+fine when ActSort creates it; the Python pipeline no longer creates a fake
+`precomputedOutput` helper file before curation.
 
 Import curated neurons from MATLAB/EXTRACT outputs:
 
@@ -362,6 +379,7 @@ import h5py
 h5_path = "preprocess_out/RECORDING_ID/neural/RECORDING_ID_miniscope.h5"
 with h5py.File(h5_path, "r") as f:
     print("data shape:", f["data"].shape)
+    print("data dtype:", f["data"].dtype)
     print("valid mask shape:", f["pipeline"]["valid_frame_mask"].shape)
     print("gapped leading frames:", f.attrs["gapped_leading_frames"])
     print("valid frames:", f.attrs["valid_frame_count"])
@@ -371,6 +389,22 @@ PY
 The important check is that `data.shape[0]` still matches the original neural
 frame count. Gap frames are copied-frame placeholders, not removed frames, so
 H5 frame `n` still lines up with neural timestamp row `n`.
+
+## Post-EXTRACT Storage
+
+For storage cleanup, treat both the converted miniscope H5 and MATLAB's
+`*_miniscope_final.h5` as local scratch files. After EXTRACT/ActSort outputs are
+verified, keep the MAT/CSV/JSON outputs and either delete the scratch H5 files or
+archive them separately. If you must keep H5s on the server, compress after
+EXTRACT with an HDF5 repacking tool, for example:
+
+```bash
+h5repack -f GZIP=4 input_miniscope.h5 input_miniscope_gzip.h5
+```
+
+This takes time and needs enough temporary disk space for the original and
+compressed copy. In most runs, the server AVI plus manifest settings are the
+source of truth, and the H5 files can be regenerated.
 
 ## MATLAB Contract
 
@@ -387,12 +421,16 @@ are a manual curation result.
 
 For each `recording_id`, save:
 
-- `<recording_id>_precomputed_output.mat`
+- `<recording_id>_extract_output_unsorted.mat`
 - `<recording_id>_precomputed_output_LABELS.mat`
 
-The first file should contain EXTRACT's `precomputedOutput` structure with
-`precomputedOutput.traces`. The second file should contain ActSort/manual labels
-with `labels.labels_overall`, where accepted cells are label `1`.
+The first file should contain EXTRACT's raw `output` structure. The second file
+should contain ActSort/manual labels with `labels.labels_overall`, where
+accepted cells are label `1`. If ActSort creates its own
+`*_precomputed_output.mat` file for the GUI, keep it as an ActSort-side working
+file; Python imports traces from the raw EXTRACT output plus labels from
+`*_precomputed_output_LABELS.mat`. The alternate `*_actsort_LABELS.mat` name is
+accepted only as a compatibility fallback.
 
 If your MATLAB script writes a different prefix, add `extract_output_mat` and
 `extract_labels_mat` columns to the manifest, or adapt the template.

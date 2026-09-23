@@ -62,6 +62,7 @@ def main() -> None:
                 record.neu_vid,
                 neu_h5,
                 overwrite=args.overwrite,
+                dtype=args.dtype,
                 compression=args.compression,
                 gap_leading_corrupt=not args.no_corruption_check,
                 manual_gap_leading_frames=args.manual_gap_leading_frames,
@@ -114,6 +115,12 @@ def parse_args() -> argparse.Namespace:
         help="Use an existing neu_h5 column instead of writing a local H5 under output-root",
     )
     parser.add_argument("--compression", choices=["gzip", "lzf"], help="Optional H5 compression")
+    parser.add_argument(
+        "--dtype",
+        choices=["uint8", "float32"],
+        default="uint8",
+        help="H5 /data dtype. uint8 is smaller and EXTRACT converts chunks to single during preprocessing.",
+    )
     parser.add_argument(
         "--no-corruption-check",
         action="store_true",

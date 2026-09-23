@@ -4,14 +4,14 @@ function summary = run_extract_one_record(neu_h5_path, output_dir, recording_id,
 % This wraps the Schnitzer lab EXTRACT workflow used in the notebook:
 %   1. preprocess_save('<input>.h5:/data', config)
 %   2. extractor({'<input>_final.h5', '/data'}, config)
-%   3. save <recording_id>_precomputed_output.mat for Python import
+%   3. save <recording_id>_extract_output_unsorted.mat for Python import and
+%      as the source for ActSort/manualActSort curation
 %
-% The saved MAT file includes:
-%   - extractOutput: raw EXTRACT output structure
-%   - precomputedOutput: EXTRACT output plus precomputedOutput.traces
+% The saved MAT file contains:
+%   - output: raw EXTRACT output structure
 %
 % ActSort/manualActSort labels are still a manual curation checkpoint. Save
-% those as <recording_id>_precomputed_output_LABELS.mat in output_dir.
+% those as <recording_id>_actsort_LABELS.mat in output_dir.
 
 opts = parse_options(varargin{:});
 
@@ -27,13 +27,12 @@ dataset_path = char(opts.DatasetPath);
 preprocess_input = [neu_h5_path ':' dataset_path];
 final_h5_path = default_final_h5_path(neu_h5_path);
 
-precomputed_output_path = fullfile(output_dir, [recording_id '_precomputed_output.mat']);
 raw_output_path = fullfile(output_dir, [recording_id '_extract_output_unsorted.mat']);
 
 fprintf('\n=== EXTRACT %s ===\n', recording_id);
 fprintf('Input H5:      %s\n', neu_h5_path);
 fprintf('Final H5:      %s\n', final_h5_path);
-fprintf('Output MAT:    %s\n', precomputed_output_path);
+fprintf('Output MAT:    %s\n', raw_output_path);
 
 configure_gpu_forward_compatibility(opts.UseGpu, opts.GpuForwardCompatibility);
 
@@ -80,12 +79,6 @@ config.thresholds.size_lower_limit = opts.SizeLowerLimit;
 extractOutput = extractor(M, config);
 output = extractOutput; %#ok<NASGU>
 
-precomputedOutput = extractOutput;
-if isfield(extractOutput, 'temporal_weights')
-    precomputedOutput.traces = full(extractOutput.temporal_weights');
-end
-
-save(precomputed_output_path, 'precomputedOutput', 'extractOutput', '-v7.3');
 save(raw_output_path, 'output', '-v7.3');
 
 if opts.MakePlots
@@ -96,7 +89,6 @@ summary = struct();
 summary.recording_id = recording_id;
 summary.neu_h5_path = neu_h5_path;
 summary.final_h5_path = final_h5_path;
-summary.precomputed_output_path = precomputed_output_path;
 summary.raw_output_path = raw_output_path;
 summary.status = 'completed';
 end

@@ -12,7 +12,7 @@ def convert_avi_to_h5(
     output_path: str | Path,
     *,
     dataset_name: str = "data",
-    dtype: str = "float32",
+    dtype: str = "uint8",
     grayscale: bool = True,
     overwrite: bool = False,
     compression: str | None = None,
@@ -175,6 +175,8 @@ def convert_avi_to_h5(
             h5f.attrs["height"] = height
             h5f.attrs["width"] = width
             h5f.attrs["dataset_name"] = dataset_name
+            h5f.attrs["dtype"] = dtype
+            h5f.attrs["compression"] = compression or ""
             h5f.attrs["gapped_leading_frames"] = total_leading_gapped
             h5f.attrs["detected_leading_corrupt_frames"] = detected_leading_bad_frames
             h5f.attrs["manual_gap_leading_frames"] = int(manual_gap_leading_frames)
@@ -197,6 +199,8 @@ def convert_avi_to_h5(
         "fps": fps,
         "height": height,
         "width": width,
+        "dtype": dtype,
+        "compression": compression,
         "gapped_leading_frames": total_leading_gapped,
         "detected_leading_corrupt_frames": detected_leading_bad_frames,
         "manual_gap_leading_frames": int(manual_gap_leading_frames),

@@ -54,7 +54,7 @@ summary = run_extract_one_record( ...
 disp(summary);
 
 fprintf('\nManual curation checkpoint:\n');
-fprintf('Open ActSort/manualActSort for this recording, classify accepted cells, and save labels to:\n');
+fprintf('Use ActSort/manualActSort on the unsorted EXTRACT output, classify accepted cells, and save labels to:\n');
 fprintf('  %s\n', fullfile(output_dir, [recording_id '_precomputed_output_LABELS.mat']));
 
 

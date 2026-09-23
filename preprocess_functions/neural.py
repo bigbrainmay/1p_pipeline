@@ -65,17 +65,37 @@ def find_extract_outputs(
     prefixes = [value for value in (recording_id, session_id) if value]
 
     for prefix in prefixes:
-        traces = output_dir / f"{prefix}_precomputed_output.mat"
-        labels = output_dir / f"{prefix}_precomputed_output_LABELS.mat"
-        if traces.exists() and labels.exists():
+        trace_candidates = [
+            output_dir / f"{prefix}_extract_output_unsorted.mat",
+            output_dir / f"{prefix}_precomputed_output.mat",
+        ]
+        label_candidates = [
+            output_dir / f"{prefix}_precomputed_output_LABELS.mat",
+            output_dir / f"{prefix}_actsort_LABELS.mat",
+            output_dir / f"{prefix}_LABELS.mat",
+        ]
+        traces = _first_existing(trace_candidates)
+        labels = _first_existing(label_candidates)
+        if traces is not None and labels is not None:
             return traces, labels
 
-    trace_matches = [
-        path
-        for path in output_dir.glob("*precomputed_output.mat")
-        if "LABELS" not in path.name.upper()
-    ]
-    label_matches = list(output_dir.glob("*precomputed_output_LABELS.mat"))
+    trace_matches = _unique_paths(
+        [
+            *output_dir.glob("*_extract_output_unsorted.mat"),
+            *[
+                path
+                for path in output_dir.glob("*_precomputed_output.mat")
+                if "LABELS" not in path.name.upper()
+            ],
+        ]
+    )
+    label_matches = _unique_paths(
+        [
+            *output_dir.glob("*_precomputed_output_LABELS.mat"),
+            *output_dir.glob("*_actsort_LABELS.mat"),
+            *output_dir.glob("*_LABELS.mat"),
+        ]
+    )
 
     if len(trace_matches) == 1 and len(label_matches) == 1:
         return trace_matches[0], label_matches[0]
@@ -170,21 +190,32 @@ def load_extract_traces(traces_mat_path: str | Path) -> np.ndarray:
     import h5py
 
     traces_mat_path = Path(traces_mat_path)
-    with h5py.File(traces_mat_path, "r") as h5f:
-        if "precomputedOutput" in h5f and "traces" in h5f["precomputedOutput"]:
-            return np.asarray(h5f["precomputedOutput"]["traces"])
+    try:
+        with h5py.File(traces_mat_path, "r") as h5f:
+            for field_path in (
+                "precomputedOutput/traces",
+                "precomputedOutput/temporal_weights",
+                "extractOutput/temporal_weights",
+                "output/temporal_weights",
+            ):
+                if field_path in h5f:
+                    return _h5_node_to_dense_array(h5f[field_path])
 
-        matches: list[np.ndarray] = []
+            matches: list[np.ndarray] = []
 
-        def collect_trace_dataset(name: str, obj: Any) -> None:
-            if name.endswith("traces") and hasattr(obj, "shape"):
-                matches.append(np.asarray(obj))
+            def collect_trace_dataset(name: str, obj: Any) -> None:
+                if name.endswith("traces") or name.endswith("temporal_weights"):
+                    matches.append(_h5_node_to_dense_array(obj))
 
-        h5f.visititems(collect_trace_dataset)
+            h5f.visititems(collect_trace_dataset)
+    except OSError:
+        return _load_extract_traces_from_mat(traces_mat_path)
 
     if len(matches) == 1:
         return matches[0]
-    raise KeyError(f"Could not find a unique traces dataset in {traces_mat_path}")
+    raise KeyError(
+        f"Could not find a unique traces or temporal_weights dataset in {traces_mat_path}"
+    )
 
 
 def load_extract_labels(labels_mat_path: str | Path) -> np.ndarray:
@@ -267,6 +298,79 @@ def _extract_matlab_field(value: Any, field_name: str) -> Any:
         return value[field_name]
 
     raise KeyError(f"Could not extract MATLAB field {field_name!r}")
+
+
+def _load_extract_traces_from_mat(traces_mat_path: Path) -> np.ndarray:
+    from scipy.io import loadmat
+
+    mat = loadmat(traces_mat_path, struct_as_record=False, squeeze_me=True)
+    field_pairs = (
+        ("precomputedOutput", "traces"),
+        ("precomputedOutput", "temporal_weights"),
+        ("extractOutput", "temporal_weights"),
+        ("output", "temporal_weights"),
+    )
+    for struct_name, field_name in field_pairs:
+        if struct_name not in mat:
+            continue
+        try:
+            return np.asarray(_extract_matlab_field(mat[struct_name], field_name))
+        except KeyError:
+            continue
+
+    for top_level_name in ("traces", "temporal_weights"):
+        if top_level_name in mat:
+            return np.asarray(mat[top_level_name])
+
+    raise KeyError(f"Could not find traces or temporal_weights in {traces_mat_path}")
+
+
+def _h5_node_to_dense_array(node: Any) -> np.ndarray:
+    if hasattr(node, "shape") and not hasattr(node, "keys"):
+        return np.asarray(node).squeeze()
+
+    keys = set(node.keys())
+    if {"data", "ir", "jc"}.issubset(keys):
+        sparse = _load_scipy_sparse()
+        data = np.asarray(node["data"]).squeeze()
+        ir = np.asarray(node["ir"]).squeeze().astype(np.int64)
+        jc = np.asarray(node["jc"]).squeeze().astype(np.int64)
+        n_rows = _matlab_sparse_n_rows(node)
+        n_cols = len(jc) - 1
+        return np.asarray(
+            sparse.csc_matrix((data, ir, jc), shape=(n_rows, n_cols)).toarray()
+        )
+
+    raise TypeError(f"Unsupported H5 node for MATLAB trace field: {node.name}")
+
+
+def _matlab_sparse_n_rows(node: Any) -> int:
+    value = node.attrs.get("MATLAB_sparse")
+    if value is None:
+        raise ValueError(f"Sparse MATLAB node {node.name} is missing MATLAB_sparse")
+    arr = np.asarray(value).squeeze()
+    return int(arr.item() if arr.shape == () else arr[0])
+
+
+def _load_scipy_sparse() -> Any:
+    try:
+        from scipy import sparse
+    except ImportError as exc:
+        raise ImportError(
+            "scipy is required to read sparse MATLAB trace arrays."
+        ) from exc
+    return sparse
+
+
+def _first_existing(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.exists():
+            return path
+    return None
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    return list(dict.fromkeys(path for path in paths if path.exists()))
 
 
 def _matlab_string(value: Any) -> str:
