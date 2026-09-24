@@ -116,7 +116,7 @@ flowchart LR
     M --> BPOD["bpod_ts column present<br/>Bpod bytes/port states"]:::input
     BPOD --> BUILD
     M --> PORTNB["Port event GUI<br/>20260923_port_signal_extraction.ipynb<br/>draw port ROI and verify on/off frames"]:::notebook
-    PORTNB --> PORTOUT["preprocess_out/&lt;recording_id&gt;/behavior/*_video_port_events.csv<br/>port_rois/&lt;recording_id&gt;__port_*.json"]:::output
+    PORTNB --> PORTOUT["preprocess_out/&lt;recording_id&gt;/behavior/*_video_port_events.csv<br/>port_rois/&lt;recording_id&gt;__port_#_direction.json"]:::output
     PORTOUT --> RERUNPORT["RERUN scripts/build_aligned_sessions.py<br/>adds video_port_* active/event columns"]:::rerun
     RERUNPORT --> ALIGNED
 
@@ -414,10 +414,13 @@ For recordings without Bpod bytes, open `20260923_port_signal_extraction.ipynb`
 before the final dataframe build. For each port, the notebook saves:
 
 ```text
-port_rois/<recording_id>__port_<n>.json
-preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_port_signal.csv
-preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_port_events_from_video.csv
+port_rois/<recording_id>__port_<n>_<direction>.json
+preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_<direction>_port_signal.csv
+preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_<direction>_port_events_from_video.csv
 ```
+
+The default convention matches the cue mapping: `port_1_left`, `port_2_right`,
+`port_3_up`, and `port_4_down`.
 
 It also updates the combined handoff file:
 
@@ -430,7 +433,7 @@ preprocess_out/<recording_id>/behavior/<recording_id>_video_port_events.csv
 CSV then gets video-derived columns such as:
 
 ```text
-video_port_1_active, video_any_port_active, video_port_event_idx,
+video_port_1_left_active, video_any_port_active, video_port_event_idx,
 video_port_name, video_port_state, video_port_events_path
 ```
 
@@ -508,12 +511,15 @@ are logged in:
 preprocess_out/trial_classification/saved_model_review_log.csv
 ```
 
-Cue metadata can contain one or more W/A/S/D entries with UTC timestamps, such
-as:
+Cue metadata can contain one or more arrow-key entries with UTC timestamps, such
+as `ArrowLeft`, `Left`, or the arrow symbol itself:
 
 ```text
-W 2026-08-07T19:21:03.123Z; A 2026-08-07T19:21:09.500Z
+ArrowLeft 2026-08-07T19:21:03.123Z; ArrowRight 2026-08-07T19:21:09.500Z
 ```
+
+The trial-visualization notebook currently uses this expected-port convention:
+`left=1`, `right=2`, `up=3`, `down=4`.
 
 The cue-event table includes:
 

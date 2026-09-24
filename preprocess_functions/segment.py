@@ -18,7 +18,33 @@ CUE_EVENT_COLUMNS = [
     "cue_end_global_idx",
 ]
 
-KEY_RE = re.compile(r"(?<![A-Za-z])([WASDwasd])(?![A-Za-z])")
+CUE_KEY_ALIASES = {
+    "LEFT": "left",
+    "ARROWLEFT": "left",
+    "LEFTARROW": "left",
+    "←": "left",
+    "RIGHT": "right",
+    "ARROWRIGHT": "right",
+    "RIGHTARROW": "right",
+    "→": "right",
+    "DOWN": "down",
+    "ARROWDOWN": "down",
+    "DOWNARROW": "down",
+    "↓": "down",
+    "UP": "up",
+    "ARROWUP": "up",
+    "UPARROW": "up",
+    "↑": "up",
+}
+KEY_RE = re.compile(
+    r"(?<![A-Za-z])("
+    r"ArrowLeft|ArrowRight|ArrowDown|ArrowUp|"
+    r"LeftArrow|RightArrow|DownArrow|UpArrow|"
+    r"Left|Right|Down|Up|"
+    r"←|→|↓|↑"
+    r")(?![A-Za-z])",
+    re.IGNORECASE,
+)
 UTC_TS_RE = re.compile(
     r"("
     r"\d{4}-\d{2}-\d{2}"
@@ -76,7 +102,7 @@ def resolve_cue_timestamp(
 
 def parse_cue_events(cue_ts, cue_duration_s: float | None = None) -> pd.DataFrame:
     """
-    Parse cue metadata containing W/A/S/D keys and UTC timestamps.
+    Parse cue metadata containing arrow-key cue labels and UTC timestamps.
 
     Multiple cue events can be separated by newlines, semicolons, or pipes.
     If cue_duration_s is None, each event's end time is the next cue start.
@@ -101,7 +127,7 @@ def parse_cue_events(cue_ts, cue_duration_s: float | None = None) -> pd.DataFram
             continue
 
         key_match = KEY_RE.search(chunk)
-        cue_key = key_match.group(1).upper() if key_match else None
+        cue_key = normalize_cue_key(key_match.group(1)) if key_match else None
         rows.append(
             {
                 "cue_key": cue_key,
@@ -140,6 +166,17 @@ def parse_cue_events(cue_ts, cue_duration_s: float | None = None) -> pd.DataFram
         events[col] = np.nan
 
     return events
+
+
+def normalize_cue_key(value) -> str | None:
+    """Normalize actual arrow-key cue labels to left/right/down/up."""
+    if value is None or pd.isna(value):
+        return None
+    raw = str(value).strip()
+    if raw == "":
+        return None
+    compact = re.sub(r"[\s_-]+", "", raw).upper()
+    return CUE_KEY_ALIASES.get(compact) or CUE_KEY_ALIASES.get(raw)
 
 
 def add_cue_event_frame_columns(

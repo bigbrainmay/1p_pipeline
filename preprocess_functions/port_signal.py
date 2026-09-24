@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any, Iterable
 
 import numpy as np
@@ -486,10 +487,14 @@ def _maybe_int(value: Any) -> int | None:
 
 def _infer_port_name_from_path(path: Path) -> str:
     stem = path.stem
-    match = pd.Series([stem]).str.extract(r"(port[_-]?\d+)")[0].iloc[0]
-    if pd.isna(match):
+    match = re.search(
+        r"(port[_-]?\d+(?:[_-](?:left|right|up|down))?)",
+        stem,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
         return "port"
-    return str(match).replace("-", "_")
+    return match.group(1).replace("-", "_").lower()
 
 
 def _empty_video_port_events() -> pd.DataFrame:
