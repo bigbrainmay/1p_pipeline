@@ -16,6 +16,8 @@ from preprocess_functions.pipeline import (
     default_aligned_session_path,
     default_bpod_events_path,
     default_bpod_intervals_path,
+    default_cell_registration_path,
+    default_registered_cell_map_path,
     default_video_port_events_path,
 )
 from preprocess_functions.port_signal import load_video_port_events
@@ -85,6 +87,12 @@ def main() -> None:
                 fps=args.fps,
                 ts_col=args.ts_col,
             )
+            aligned, registration_summary = add_registered_cell_aliases(
+                aligned,
+                record,
+                output_root,
+                enabled=args.add_registered_cell_aliases,
+            )
 
             if args.add_pose:
                 aligned = pose.compute_position_from_df(
@@ -115,6 +123,7 @@ def main() -> None:
                     **row,
                     **bpod_summary,
                     **video_port_summary,
+                    **registration_summary,
                     "status": "aligned",
                     "n_rows": len(aligned),
                 }
@@ -144,8 +153,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=float, default=30.0)
     parser.add_argument("--ts-col", default="Timestamp")
     parser.add_argument("--no-pose", dest="add_pose", action="store_false")
+    parser.add_argument(
+        "--no-registered-cell-aliases",
+        dest="add_registered_cell_aliases",
+        action="store_false",
+        help=(
+            "Do not add registered_cell_* alias columns from "
+            "preprocess_out/coregistration/<mouse>/<mouse>_cell_registration.csv"
+        ),
+    )
     parser.add_argument("--fail-fast", action="store_true")
-    parser.set_defaults(add_pose=True)
+    parser.set_defaults(add_pose=True, add_registered_cell_aliases=True)
     return parser.parse_args()
 
 
@@ -194,6 +212,86 @@ def summarize_video_port_events(
         return {"n_video_port_events": None}
     events = load_video_port_events(video_port_events_path)
     return {"n_video_port_events": int(len(events))}
+
+
+def add_registered_cell_aliases(
+    aligned: pd.DataFrame,
+    record,
+    output_root: Path,
+    *,
+    enabled: bool = True,
+) -> tuple[pd.DataFrame, dict[str, int | str | None]]:
+    summary: dict[str, int | str | None] = {
+        "cell_registration_csv": None,
+        "registered_cell_map_csv": None,
+        "n_registered_cell_links": None,
+        "n_registered_cell_aliases": None,
+        "registered_cell_status": "disabled" if not enabled else "not_checked",
+    }
+    if not enabled:
+        return aligned, summary
+
+    mouse_id = record.mouse_id or record.sheet_name
+    if not mouse_id:
+        summary["registered_cell_status"] = "missing_mouse_id"
+        return aligned, summary
+
+    registration_path = default_cell_registration_path(output_root, str(mouse_id))
+    summary["cell_registration_csv"] = str(registration_path)
+    if not registration_path.exists():
+        summary["registered_cell_status"] = "missing_cell_registration"
+        summary["n_registered_cell_links"] = 0
+        summary["n_registered_cell_aliases"] = 0
+        return aligned, summary
+
+    registration = pd.read_csv(registration_path)
+    required = {"recording_id", "registered_cell_id", "cell_col"}
+    missing = required - set(registration.columns)
+    if missing:
+        missing_cols = ",".join(sorted(missing))
+        summary["registered_cell_status"] = f"registration_missing_columns:{missing_cols}"
+        summary["n_registered_cell_links"] = 0
+        summary["n_registered_cell_aliases"] = 0
+        return aligned, summary
+
+    rows = registration[
+        registration["recording_id"].astype(str) == str(record.recording_id)
+    ].copy()
+    if rows.empty:
+        summary["registered_cell_status"] = "no_registered_cells_for_recording"
+        summary["n_registered_cell_links"] = 0
+        summary["n_registered_cell_aliases"] = 0
+        return aligned, summary
+
+    out = aligned.copy()
+    map_rows = []
+    alias_count = 0
+    for _, row in rows.iterrows():
+        local_col = str(row["cell_col"])
+        registered_col = str(row["registered_cell_id"])
+        has_local_trace = local_col in out.columns
+        if has_local_trace:
+            out[registered_col] = out[local_col]
+            alias_count += 1
+
+        map_row = row.to_dict()
+        map_row["local_cell_col"] = local_col
+        map_row["registered_cell_col"] = registered_col
+        map_row["has_local_trace"] = bool(has_local_trace)
+        map_rows.append(map_row)
+
+    map_path = default_registered_cell_map_path(output_root, record)
+    map_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(map_rows).to_csv(map_path, index=False)
+
+    summary["registered_cell_map_csv"] = str(map_path)
+    summary["n_registered_cell_links"] = int(len(rows))
+    summary["n_registered_cell_aliases"] = int(alias_count)
+    if alias_count:
+        summary["registered_cell_status"] = "registered_aliases_added"
+    else:
+        summary["registered_cell_status"] = "registered_cells_missing_local_traces"
+    return out, summary
 
 
 def selected(record, only: str | None) -> bool:

@@ -64,6 +64,81 @@ Two IDs are created automatically:
 - `recording_id`: row-level ID. If one date has multiple recordings, this adds
   `trial_type` or a video-derived suffix so files do not overwrite each other.
 
+## Pipeline Flowchart
+
+Legend:
+
+- Blue: notebook-friendly single-recording checks or review.
+- Gray: batch scripts.
+- Yellow: manual/GUI intervention.
+- Green: files written under `preprocess_out/`.
+- Red: rerun point after a manual/optional sidecar changes.
+
+```mermaid
+flowchart TD
+    M["Manifest spreadsheet<br/>data_paths/*.xlsx or *.csv"]:::input
+
+    M --> LIST["scripts/list_manifest_records.py<br/>check recording_id values and paths"]:::script
+    M --> PRENB["20260919_neu_preprocess.ipynb<br/>single recording video/H5/MATLAB checks"]:::notebook
+    M --> VIDCHK["scripts/check_miniscope_video_corruption.py<br/>optional leading-frame corruption report"]:::script
+    VIDCHK --> VIDCHKOUT["preprocess_out/video_corruption_index.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/*_corruption_report.json"]:::output
+
+    M --> AVI2H5["scripts/convert_miniscope_avi_to_h5.py<br/>AVI to local uint8 H5"]:::script
+    PRENB --> AVI2H5
+    VIDCHKOUT --> AVI2H5
+    AVI2H5 --> H5OUT["preprocess_out/manifest_with_h5.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/&lt;recording_id&gt;_miniscope.h5"]:::output
+
+    H5OUT --> MATLAB["scripts/run_matlab_neural_extraction.py<br/>or matlab/run_extract_batch_from_index.m"]:::script
+    MATLAB --> EXTRACTOUT["preprocess_out/manifest_with_matlab.csv<br/>preprocess_out/&lt;recording_id&gt;/matlab/*_extract_output_unsorted.mat"]:::output
+    EXTRACTOUT --> ACTSORT["ActSort/manualActSort in MATLAB R2021b<br/>manual accepted/rejected cell labels"]:::gui
+    ACTSORT --> LABELS["preprocess_out/&lt;recording_id&gt;/matlab/*_precomputed_output_LABELS.mat"]:::output
+    LABELS --> IMPORT["scripts/import_curated_neurons.py<br/>import accepted cells"]:::script
+    IMPORT --> CELLS["preprocess_out/manifest_with_cells.csv<br/>preprocess_out/curated_neuron_index.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/*_cell_traces.csv"]:::output
+
+    CELLS --> BUILD["scripts/build_aligned_sessions.py<br/>build behavior/SLEAP/Bpod/video-port/neural table"]:::script
+    M --> BUILD
+    BUILD --> ALIGNED["preprocess_out/aligned_session_index.csv<br/>preprocess_out/aligned_sessions/&lt;recording_id&gt;_session.csv"]:::output
+
+    CELLS --> COREG["scripts/register_cells_across_sessions.py<br/>optional CaImAn footprint registration by mouse"]:::script
+    COREG --> COREGOUT["preprocess_out/coregistration_index.csv<br/>preprocess_out/coregistration/&lt;mouse_id&gt;/&lt;mouse_id&gt;_cell_registration.csv"]:::output
+    COREGOUT --> RERUNCOREG["RERUN scripts/build_aligned_sessions.py<br/>adds registered_cell_* aliases and per-recording map"]:::rerun
+    RERUNCOREG --> ALIGNED
+    RERUNCOREG --> REGMAP["preprocess_out/&lt;recording_id&gt;/neural/&lt;recording_id&gt;_registered_cell_map.csv"]:::output
+
+    M --> BPOD["bpod_ts column present<br/>Bpod bytes/port states"]:::input
+    BPOD --> BUILD
+    M --> PORTNB["20260923_port_signal_extraction.ipynb<br/>draw port ROI and verify on/off frames"]:::notebook
+    PORTNB --> PORTOUT["preprocess_out/&lt;recording_id&gt;/behavior/*_video_port_events.csv<br/>port_rois/&lt;recording_id&gt;__port_*.json"]:::output
+    PORTOUT --> RERUNPORT["RERUN scripts/build_aligned_sessions.py<br/>adds video_port_* active/event columns"]:::rerun
+    RERUNPORT --> ALIGNED
+
+    ALIGNED --> ARENANB["20260919_dataframe_construction.ipynb<br/>arena/startbox ROI GUI and one-recording checks"]:::notebook
+    ARENANB --> ALIGNEDROI["aligned session CSV with<br/>in_arena, in_startbox_L, in_startbox_R, arena_only"]:::output
+    ALIGNEDROI --> SEG["scripts/segment_trials.py<br/>cue events and trial table"]:::script
+    ALIGNED --> SEG
+    M --> CUEFIX["cue_ts column or preprocess_out/cue_ts_overrides.csv<br/>manual cue timestamp fixes"]:::input
+    CUEFIX --> RERUNCUE["RERUN build_aligned_sessions.py if manifest cue_ts changed<br/>RERUN segment_trials.py after any cue fix"]:::rerun
+    RERUNCUE --> BUILD
+    RERUNCUE --> SEG
+    SEG --> TRIALS["preprocess_out/trial_segment_index.csv<br/>preprocess_out/&lt;recording_id&gt;/behavior/*_cue_events.csv<br/>preprocess_out/&lt;recording_id&gt;/behavior/*_trials.csv"]:::output
+
+    TRIALS --> CLASSNB["20260923_trial_classification.ipynb<br/>label trials and train sklearn model"]:::notebook
+    CLASSNB --> MODEL["ML_model/trial_type_classifier.joblib<br/>preprocess_out/trial_classification/trial_labels.csv"]:::output
+    MODEL --> PREDICT["scripts/predict_trial_labels.py<br/>apply saved model"]:::script
+    PREDICT --> REVIEW["20260923_trial_prediction_review.ipynb<br/>student correction/review loop"]:::notebook
+
+    ALIGNED --> VISCORE["20260923_visualize_core.ipynb<br/>full-session behavior and optional neural plots"]:::notebook
+    TRIALS --> VISTRIALS["20260923_visualize_trials.ipynb<br/>trial metrics, event timing, optional neural traces"]:::notebook
+    ALIGNED --> VISTRIALS
+
+    classDef input fill:#ffffff,stroke:#71717a,color:#18181b;
+    classDef script fill:#f4f4f5,stroke:#52525b,color:#18181b;
+    classDef notebook fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef gui fill:#fef3c7,stroke:#d97706,color:#451a03;
+    classDef output fill:#dcfce7,stroke:#16a34a,color:#052e16;
+    classDef rerun fill:#fee2e2,stroke:#dc2626,color:#450a0a;
+```
+
 ## Batch Flow
 
 Set your lab mount if the spreadsheet stores paths like `\Data\May\...`:
@@ -248,17 +323,50 @@ The registration table is written here:
 preprocess_out/coregistration/<mouse_id>/<mouse_id>_cell_registration.csv
 ```
 
-It maps each session-local EXTRACT/ActSort cell to a cross-session identity:
+It maps each session-local EXTRACT/ActSort footprint to a cross-session
+identity. This is not built from OASIS/deconvolved traces; CaImAn receives the
+accepted EXTRACT spatial footprints as a `pixels x cells` matrix and returns the
+cross-session assignment table.
 
 ```text
 mouse_id, registered_cell_id, recording_id, session_id, component_idx, cell_col
 ```
+
+After that file exists, **rerun `scripts/build_aligned_sessions.py` for the
+affected recordings or mouse**. The aligned CSV keeps the local EXTRACT/ActSort
+columns such as `cell_17` and adds cross-session aliases such as
+`registered_cell_0` when a mapping is available. Nothing is overwritten, so the
+same aligned file can be used for local-cell analyses or registered-cell
+analyses.
+
+The builder also writes a per-recording map:
+
+```text
+preprocess_out/<recording_id>/neural/<recording_id>_registered_cell_map.csv
+```
+
+`aligned_session_index.csv` reports:
+
+```text
+cell_registration_csv, registered_cell_map_csv,
+n_registered_cell_links, n_registered_cell_aliases, registered_cell_status
+```
+
+Use `--no-registered-cell-aliases` on `build_aligned_sessions.py` if you want to
+ignore CaImAn outputs and build only local `cell_*` columns.
 
 Build aligned behavior, SLEAP, optional Bpod, and optional neural CSVs:
 
 ```bash
 python scripts/build_aligned_sessions.py preprocess_out/manifest_with_cells.csv \
   --output-root preprocess_out
+```
+
+If the CaImAn registration CSV exists for that mouse, this stage automatically
+adds `registered_cell_*` alias columns to:
+
+```text
+preprocess_out/aligned_sessions/<recording_id>_session.csv
 ```
 
 Open `20260919_dataframe_construction.ipynb` and run the **Collect or Load
@@ -305,8 +413,9 @@ It also updates the combined handoff file:
 preprocess_out/<recording_id>/behavior/<recording_id>_video_port_events.csv
 ```
 
-Rerun `scripts/build_aligned_sessions.py --only RECORDING_ID` after saving and
-the aligned session CSV gets video-derived columns such as:
+**After saving video-derived port events, rerun
+`scripts/build_aligned_sessions.py --only RECORDING_ID`.** The aligned session
+CSV then gets video-derived columns such as:
 
 ```text
 video_port_1_active, video_any_port_active, video_port_event_idx,
@@ -423,6 +532,14 @@ recording_id,cue_ts,cue_ts_note
 
 The override only changes the trial metadata output. The original spreadsheet
 and aligned session CSV remain unchanged.
+
+If you fix cue timestamps directly in the manifest spreadsheet, **rerun
+`scripts/build_aligned_sessions.py --only RECORDING_ID`** so the aligned session
+CSV stores the updated `cue_ts`, then rerun `scripts/segment_trials.py --only
+RECORDING_ID`. If you use `preprocess_out/cue_ts_overrides.csv` instead, **rerun
+`scripts/segment_trials.py --only RECORDING_ID`**; rebuilding the aligned
+session CSV is optional because the override is applied during trial
+segmentation.
 
 Each stage writes an index CSV in `preprocess_out/` and a generated manifest for the
 next stage. You can rerun one recording with `--only RECORDING_ID`.

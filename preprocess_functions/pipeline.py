@@ -77,5 +77,15 @@ def default_cell_registration_path(output_root: str | Path, mouse_id: str) -> Pa
     )
 
 
+def default_registered_cell_map_path(
+    output_root: str | Path,
+    record: SessionRecord,
+) -> Path:
+    return (
+        neural_output_dir(output_root, record)
+        / f"{safe_id(record.recording_id)}_registered_cell_map.csv"
+    )
+
+
 def cue_timestamp_overrides_path(output_root: str | Path) -> Path:
     return Path(output_root) / "cue_ts_overrides.csv"
