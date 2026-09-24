@@ -58,6 +58,18 @@ def default_cue_events_path(output_root: str | Path, record: SessionRecord) -> P
     return behavior_output_dir(output_root, record) / f"{safe_id(record.recording_id)}_cue_events.csv"
 
 
+def default_bpod_events_path(output_root: str | Path, record: SessionRecord) -> Path:
+    return behavior_output_dir(output_root, record) / f"{safe_id(record.recording_id)}_bpod_events.csv"
+
+
+def default_bpod_intervals_path(output_root: str | Path, record: SessionRecord) -> Path:
+    return behavior_output_dir(output_root, record) / f"{safe_id(record.recording_id)}_bpod_intervals.csv"
+
+
+def default_video_port_events_path(output_root: str | Path, record: SessionRecord) -> Path:
+    return behavior_output_dir(output_root, record) / f"{safe_id(record.recording_id)}_video_port_events.csv"
+
+
 def default_cell_registration_path(output_root: str | Path, mouse_id: str) -> Path:
     return (
         coregistration_output_dir(output_root, mouse_id)

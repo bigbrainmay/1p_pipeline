@@ -4,6 +4,30 @@ Use the handmade spreadsheet as a manifest: one row equals one recording to proc
 The notebook should become an inspection/reporting layer, while repeated steps live in
 scripts.
 
+## Active Pipeline Notebooks
+
+- `20260919_neu_preprocess.ipynb`: one-recording neural checks, AVI-to-H5,
+  EXTRACT/ActSort handoff, curated neuron import, and optional CaImAn
+  registration.
+- `20260919_dataframe_construction.ipynb`: one-recording dataframe build,
+  arena ROI collection, cue timestamp overrides, boundary tuning setup, and
+  trial segmentation.
+- `20260923_visualize_core.ipynb`: inspect full-session arena behavior with
+  arena/startbox ROIs, head direction, and optional neural maps such as 2D
+  ratemap, HD, EBC, and cell summary plots.
+- `20260923_visualize_trials.ipynb`: inspect individual trials, Bpod or
+  video-port event timing, success/unsuccess definitions, trajectory labels,
+  trial metrics, and optional neural traces aligned to trial/cue/port events.
+- `20260923_trial_classification.ipynb`: label trajectory trials, train sklearn
+  trial-type classifiers, predict unlabeled trials, and review/correct model
+  predictions.
+- `20260923_trial_prediction_review.ipynb`: student-facing review notebook for
+  labels predicted by a saved model from `ML_model/`.
+- `20260923_port_signal_extraction.ipynb`: fallback for recordings with no Bpod
+  byte file; draw a behavior-video port ROI, extract the pixel-intensity signal,
+  tune on/off detection, verify start/stop frames, and save video-derived port
+  events.
+
 ## Manifest Columns
 
 Recommended columns:
@@ -17,12 +41,22 @@ Recommended columns:
 - `neu_vid`: miniscope AVI to convert to H5.
 - `trial_type`: optional label such as `FE1_Sal`.
 - `cue_ts`: optional cue timestamp file or note.
+- `bpod_ts`: optional Bpod byte/event timestamp CSV. Headerless rows like
+  `...,2026-07-22T15:14:41.7699200-07:00,1` are supported; byte `1` means
+  port 1 on, byte `11` means port 1 off, byte `2` means port 2 on, byte `12`
+  means port 2 off, and the same `+10` off-code pattern is used for all four
+  ports.
+- `video_port_events_csv`: optional video-derived port event CSV for recordings
+  without Bpod bytes. This can be created by
+  `20260923_port_signal_extraction.ipynb`; if absent, dataframe construction
+  also checks the default per-recording behavior output path.
 - `neu_h5`: produced by video conversion.
 - `matlab_output_dir`: produced by MATLAB extraction.
 - `cell_csv`: produced by curated neuron import.
 
 Older names such as `beh_csv_path`, `neu_csv_path`, `sleap_csv_path`,
-`beh_vid_path`, and `miniscope_video` are normalized automatically.
+`bpod_csv`, `port_events_csv`, `beh_vid_path`, and `miniscope_video` are
+normalized automatically.
 
 Two IDs are created automatically:
 
@@ -220,7 +254,7 @@ It maps each session-local EXTRACT/ActSort cell to a cross-session identity:
 mouse_id, registered_cell_id, recording_id, session_id, component_idx, cell_col
 ```
 
-Build aligned behavior, SLEAP, and neural CSVs:
+Build aligned behavior, SLEAP, optional Bpod, and optional neural CSVs:
 
 ```bash
 python scripts/build_aligned_sessions.py preprocess_out/manifest_with_cells.csv \
@@ -243,9 +277,53 @@ That notebook adds these columns to the aligned session CSV:
 in_arena, in_startbox_L, in_startbox_R, arena_only
 ```
 
-`20260919_visualize.ipynb` can also collect/load those same ROI files for
-plotting. It uses ROI features in memory by default and only writes them back to
-the aligned CSV if `SAVE_ROI_FEATURES_TO_ALIGNED_CSV = True`.
+If `bpod_ts` is present, aligned session CSVs also get Bpod event columns such
+as `bpod_code`, `bpod_port`, `bpod_state`, `bpod_event_dropped`, and
+`bpod_port_<n>_active` columns for whichever ports appear in the file. The same
+stage writes lossless behavior-side Bpod tables:
+
+```text
+preprocess_out/<recording_id>/behavior/<recording_id>_bpod_events.csv
+preprocess_out/<recording_id>/behavior/<recording_id>_bpod_intervals.csv
+```
+
+`bpod_events.csv` has one row per byte/event. `bpod_intervals.csv` pairs port-on
+and port-off rows and reports each port activation duration.
+
+For recordings without Bpod bytes, open `20260923_port_signal_extraction.ipynb`
+before the final dataframe build. For each port, the notebook saves:
+
+```text
+port_rois/<recording_id>__port_<n>.json
+preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_port_signal.csv
+preprocess_out/<recording_id>/behavior/<recording_id>_port_<n>_port_events_from_video.csv
+```
+
+It also updates the combined handoff file:
+
+```text
+preprocess_out/<recording_id>/behavior/<recording_id>_video_port_events.csv
+```
+
+Rerun `scripts/build_aligned_sessions.py --only RECORDING_ID` after saving and
+the aligned session CSV gets video-derived columns such as:
+
+```text
+video_port_1_active, video_any_port_active, video_port_event_idx,
+video_port_name, video_port_state, video_port_events_path
+```
+
+`aligned_session_index.csv` also reports `video_port_events_csv` and
+`n_video_port_events` for these recordings.
+
+`20260923_visualize_core.ipynb` can also collect/load those same ROI files for
+plotting full-session behavior and optional neural maps. It uses ROI features in
+memory by default and only writes them back to the aligned CSV if
+`SAVE_ROI_FEATURES_TO_ALIGNED_CSV = True`.
+
+Use `20260923_visualize_trials.ipynb` after trial segmentation when you want to
+compare trial trajectories, count correct/incorrect trials, inspect active port
+onsets, or align optional neural traces to cue, trial, or port-event times.
 
 Segment trials and save cue/trial metadata:
 
@@ -267,6 +345,46 @@ This writes one cue-event table and one trial table per recording:
 ```text
 preprocess_out/<recording_id>/behavior/<recording_id>_cue_events.csv
 preprocess_out/<recording_id>/behavior/<recording_id>_trials.csv
+```
+
+Open `20260923_trial_classification.ipynb` after trial segmentation when you
+want to label a subset of trajectory trials, train sklearn trial-type
+classifiers, predict the remaining trial labels, and review/correct predictions.
+It writes labels and predictions under:
+
+```text
+preprocess_out/trial_classification/
+```
+
+The trained model bundle is saved here:
+
+```text
+ML_model/trial_type_classifier.joblib
+```
+
+To apply that saved model to fully processed recordings without retraining, run:
+
+```bash
+python scripts/predict_trial_labels.py \
+  --output-root preprocess_out \
+  --model ML_model/trial_type_classifier.joblib
+```
+
+This writes:
+
+```text
+preprocess_out/trial_classification/saved_model_trial_predictions.csv
+preprocess_out/trial_classification/saved_model_prediction_index.csv
+```
+
+Then open `20260923_trial_prediction_review.ipynb`. Students can inspect the
+trial trajectory plot plus predicted label/confidence, accept the prediction, or
+save a corrected label. Accepted/corrected labels are written back to
+`preprocess_out/trial_classification/trial_labels.csv`, and the review actions
+are logged in:
+
+```text
+preprocess_out/trial_classification/saved_model_review_log.csv
 ```
 
 Cue metadata can contain one or more W/A/S/D entries with UTC timestamps, such

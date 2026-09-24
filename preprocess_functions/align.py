@@ -4,7 +4,9 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
+from .bpod import add_bpod_events_to_aligned, load_bpod_byte_events
 from .manifest import add_manifest_ids, normalize_manifest_table
+from .port_signal import add_video_port_events_to_aligned
 
 
 LAB_RELATIVE_ROOTS = {"data", "users"}
@@ -72,6 +74,9 @@ def load_sessions(sheet_path, date_col="date"):
 
         if "cell_csv" not in df.columns:
                 df["cell_csv"] = None
+
+        if "bpod_ts" not in df.columns:
+                df["bpod_ts"] = None
 
         if "beh_vid" not in df.columns:
                 df["beh_vid"] = None
@@ -159,6 +164,8 @@ def align_session(
     ts_col: str = "Timestamp",
     neu_path: Path | None = None,
     cell_path: Path | None = None,
+    bpod_path: Path | None = None,
+    video_port_events_path: Path | list[Path] | None = None,
     sleap_cols: list[str] | None = None,
 ) -> pd.DataFrame:
 
@@ -166,6 +173,9 @@ def align_session(
     sleap_df = pd.read_csv(sleap_path)
     neu_df = pd.read_csv(neu_path) if neu_path is not None else None
     cell_df = pd.read_csv(cell_path) if cell_path is not None else None
+    bpod_df = None
+    if bpod_path is not None:
+        bpod_df = load_bpod_byte_events(bpod_path).rename(columns={"bpod_ts": ts_col})
 
     if cell_df is not None:
         if neu_df is None:
@@ -206,7 +216,7 @@ def align_session(
         print(f"Loaded cell traces: {len(cell_df)} frames x {len(cell_cols)} cells")
 
     timeline = build_timeline(
-        [neu_df, beh_df, cell_df], 
+        [neu_df, beh_df, cell_df, bpod_df],
         fps=fps, 
         ts_col=ts_col,
         )
@@ -273,6 +283,22 @@ def align_session(
     keep = ["beh_frame_idx"] + [c for c in sleap_cols if c in sleap.columns]
     aligned = aligned.merge(sleap[keep], on="beh_frame_idx", how="left")
 
+    if bpod_path is not None:
+        aligned = add_bpod_events_to_aligned(aligned, bpod_path, fps=fps)
+        aligned["bpod_ts_path"] = str(bpod_path)
+    else:
+        aligned["bpod_event_dropped"] = True
+        aligned["bpod_any_port_active"] = False
+        aligned["bpod_ts_path"] = None
+
+    if video_port_events_path is not None:
+        aligned = add_video_port_events_to_aligned(aligned, video_port_events_path)
+        aligned["video_port_events_path"] = str(video_port_events_path)
+    else:
+        aligned["video_port_event_dropped"] = True
+        aligned["video_any_port_active"] = False
+        aligned["video_port_events_path"] = None
+
     return aligned
 
 
@@ -290,6 +316,12 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
             sleap_path = resolve_lab_path(row["sleap_csv"])
             neu_path = resolve_lab_path(row["neu_csv"]) if pd.notna(row["neu_csv"]) else None
             cell_path = resolve_lab_path(row["cell_csv"]) if pd.notna(row["cell_csv"]) else None
+            bpod_path = resolve_lab_path(row["bpod_ts"]) if pd.notna(row["bpod_ts"]) else None
+            video_port_events_path = (
+                resolve_lab_path(row["video_port_events_csv"])
+                if "video_port_events_csv" in row and pd.notna(row["video_port_events_csv"])
+                else None
+            )
             beh_vid = resolve_lab_path(row["beh_vid"]) if pd.notna(row["beh_vid"]) else None
 
             print(f"\nRecording: {recording_id}")
@@ -298,6 +330,8 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
             print("sleap_path:", sleap_path)
             print("neu_path  :", neu_path)
             print("cell_path :", cell_path)
+            print("bpod_path :", bpod_path)
+            print("video_port_events_path:", video_port_events_path)
 
         
             aligned = align_session(
@@ -305,6 +339,8 @@ def align_all(sheet_path, fps, ts_col="Timestamp", date_col="date"):
                 sleap_path=sleap_path,
                 neu_path=neu_path,
                 cell_path=cell_path,
+                bpod_path=bpod_path,
+                video_port_events_path=video_port_events_path,
                 fps=fps,
                 ts_col=ts_col,
             )

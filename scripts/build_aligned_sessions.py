@@ -10,8 +10,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from preprocess_functions.bpod import bpod_port_intervals, load_bpod_byte_events
 from preprocess_functions.manifest import load_session_records
-from preprocess_functions.pipeline import default_aligned_session_path
+from preprocess_functions.pipeline import (
+    default_aligned_session_path,
+    default_bpod_events_path,
+    default_bpod_intervals_path,
+    default_video_port_events_path,
+)
+from preprocess_functions.port_signal import load_video_port_events
 
 
 def main() -> None:
@@ -36,12 +43,28 @@ def main() -> None:
 
         cell_csv = record.cell_csv or cell_csv_by_recording.get(record.recording_id)
         out_path = default_aligned_session_path(output_root, record)
+        bpod_events_path = (
+            default_bpod_events_path(output_root, record) if record.bpod_ts else None
+        )
+        bpod_intervals_path = (
+            default_bpod_intervals_path(output_root, record) if record.bpod_ts else None
+        )
+        video_port_events_path = record.video_port_events_csv
+        if video_port_events_path is None:
+            default_video_port_path = default_video_port_events_path(output_root, record)
+            video_port_events_path = (
+                default_video_port_path if default_video_port_path.exists() else None
+            )
 
         row = {
             "recording_id": record.recording_id,
             "session_id": record.session_id,
             "beh_csv": str(record.beh_csv) if record.beh_csv else None,
             "sleap_csv": str(record.sleap_csv) if record.sleap_csv else None,
+            "bpod_ts": str(record.bpod_ts) if record.bpod_ts else None,
+            "bpod_events_csv": str(bpod_events_path) if bpod_events_path else None,
+            "bpod_intervals_csv": str(bpod_intervals_path) if bpod_intervals_path else None,
+            "video_port_events_csv": str(video_port_events_path) if video_port_events_path else None,
             "neu_csv": str(record.neu_csv) if record.neu_csv else None,
             "cell_csv": str(cell_csv) if cell_csv else None,
             "aligned_csv": str(out_path),
@@ -57,6 +80,8 @@ def main() -> None:
                 sleap_path=record.sleap_csv,
                 neu_path=record.neu_csv,
                 cell_path=cell_csv,
+                bpod_path=record.bpod_ts,
+                video_port_events_path=video_port_events_path,
                 fps=args.fps,
                 ts_col=args.ts_col,
             )
@@ -79,7 +104,21 @@ def main() -> None:
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
             aligned.to_csv(out_path, index=False)
-            rows.append({**row, "status": "aligned", "n_rows": len(aligned)})
+            bpod_summary = write_bpod_outputs(
+                record.bpod_ts,
+                bpod_events_path,
+                bpod_intervals_path,
+            )
+            video_port_summary = summarize_video_port_events(video_port_events_path)
+            rows.append(
+                {
+                    **row,
+                    **bpod_summary,
+                    **video_port_summary,
+                    "status": "aligned",
+                    "n_rows": len(aligned),
+                }
+            )
             print(f"{record.recording_id}: wrote {out_path}")
         except Exception as exc:
             rows.append({**row, "status": "error", "error": repr(exc)})
@@ -125,6 +164,36 @@ def load_cell_index(path: str | None, output_root: Path) -> dict[str, Path]:
         str(row["recording_id"]): Path(row["cell_csv"])
         for _, row in df.dropna(subset=["recording_id", "cell_csv"]).iterrows()
     }
+
+
+def write_bpod_outputs(
+    bpod_ts_path: Path | None,
+    bpod_events_path: Path | None,
+    bpod_intervals_path: Path | None,
+) -> dict[str, int | None]:
+    if bpod_ts_path is None or bpod_events_path is None or bpod_intervals_path is None:
+        return {"n_bpod_events": None, "n_bpod_intervals": None}
+
+    events = load_bpod_byte_events(bpod_ts_path)
+    intervals = bpod_port_intervals(events)
+
+    bpod_events_path.parent.mkdir(parents=True, exist_ok=True)
+    events.to_csv(bpod_events_path, index=False)
+    intervals.to_csv(bpod_intervals_path, index=False)
+
+    return {
+        "n_bpod_events": int(len(events)),
+        "n_bpod_intervals": int(len(intervals)),
+    }
+
+
+def summarize_video_port_events(
+    video_port_events_path: Path | None,
+) -> dict[str, int | None]:
+    if video_port_events_path is None:
+        return {"n_video_port_events": None}
+    events = load_video_port_events(video_port_events_path)
+    return {"n_video_port_events": int(len(events))}
 
 
 def selected(record, only: str | None) -> bool:

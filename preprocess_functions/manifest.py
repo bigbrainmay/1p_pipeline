@@ -17,6 +17,8 @@ PATH_COLUMNS = (
     "beh_csv",
     "neu_csv",
     "sleap_csv",
+    "bpod_ts",
+    "video_port_events_csv",
     "beh_vid",
     "neu_vid",
     "neu_h5",
@@ -36,6 +38,17 @@ COLUMN_ALIASES = {
     "miniscope_csv": "neu_csv",
     "miniscope_csv_path": "neu_csv",
     "sleap_csv_path": "sleap_csv",
+    "bpod_csv": "bpod_ts",
+    "bpod_csv_path": "bpod_ts",
+    "bpod_ts_path": "bpod_ts",
+    "bpod_bytes": "bpod_ts",
+    "bpod_bytes_path": "bpod_ts",
+    "bpod_events": "bpod_ts",
+    "bpod_events_path": "bpod_ts",
+    "port_events_csv": "video_port_events_csv",
+    "port_events_path": "video_port_events_csv",
+    "video_port_events": "video_port_events_csv",
+    "video_port_events_path": "video_port_events_csv",
     "beh_vid_path": "beh_vid",
     "behavior_video": "beh_vid",
     "behavior_video_path": "beh_vid",
@@ -131,7 +144,13 @@ class SessionRecord:
     matlab_output_dir: Path | None = None
     trial_type: str | None = None
     cue_ts: str | None = None
+    bpod_ts: Path | None = None
+    video_port_events_csv: Path | None = None
     extras: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def bpod_csv(self) -> Path | None:
+        return self.bpod_ts
 
     @classmethod
     def from_row(
