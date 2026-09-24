@@ -50,9 +50,19 @@ Recommended columns:
   without Bpod bytes. This can be created by
   `20260923_port_signal_extraction.ipynb`; if absent, dataframe construction
   also checks the default per-recording behavior output path.
+- `manipulation`: optional broad manipulation label, such as `baseline`,
+  `saline`, `CNO`, or `washout`.
+- `cue_condition`: optional visual cue state, such as `normal_cues`,
+  `rotated_cues`, or `no_cues`.
+- `cue_rotation_deg`: optional numeric cue rotation angle.
+- `visual_cues_present`: optional true/false cue presence marker.
 - `neu_h5`: produced by video conversion.
 - `matlab_output_dir`: produced by MATLAB extraction.
 - `cell_csv`: produced by curated neuron import.
+
+The experimental-analysis metadata columns are carried into aligned session CSVs
+and the population loader in `20260923_visualize_core.ipynb`. They do not affect
+AVI conversion, MATLAB EXTRACT, ActSort, or curated-cell import.
 
 Older names such as `beh_csv_path`, `neu_csv_path`, `sleap_csv_path`,
 `bpod_csv`, `port_events_csv`, `beh_vid_path`, and `miniscope_video` are
@@ -77,75 +87,6 @@ Legend:
 - Yellow: manual/GUI intervention.
 - Green: files written under `preprocess_out/`.
 - Red: rerun point after a manual/optional sidecar changes.
-
-```mermaid
-flowchart LR
-    M["Manifest spreadsheet<br/>data_paths/*.xlsx or *.csv"]:::input
-
-    M --> LIST["scripts/list_manifest_records.py<br/>check recording_id values and paths"]:::script
-    M --> PRENB["20260919_neu_preprocess.ipynb<br/>single recording video/H5/MATLAB checks"]:::notebook
-    M --> VIDCHK["scripts/check_miniscope_video_corruption.py<br/>optional leading-frame corruption report"]:::script
-    VIDCHK --> VIDCHKOUT["preprocess_out/video_corruption_index.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/*_corruption_report.json"]:::output
-
-    M --> AVI2H5["scripts/convert_miniscope_avi_to_h5.py<br/>AVI to local uint8 H5"]:::script
-    PRENB --> AVI2H5
-    VIDCHKOUT --> AVI2H5
-    AVI2H5 --> H5OUT["preprocess_out/manifest_with_h5.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/&lt;recording_id&gt;_miniscope.h5"]:::output
-
-    H5OUT --> MATLAB["scripts/run_matlab_neural_extraction.py<br/>or matlab/run_extract_batch_from_index.m"]:::script
-    MATLAB --> EXTRACTOUT["preprocess_out/manifest_with_matlab.csv<br/>preprocess_out/&lt;recording_id&gt;/matlab/*_extract_output_unsorted.mat"]:::output
-    EXTRACTOUT --> ACTSORT["ActSort/manualActSort in MATLAB R2021b<br/>manual accepted/rejected cell labels"]:::gui
-    ACTSORT --> LABELS["preprocess_out/&lt;recording_id&gt;/matlab/*_precomputed_output_LABELS.mat"]:::output
-    EXTRACTOUT --> IMPORT["scripts/import_curated_neurons.py<br/>EXTRACT temporal_weights + accepted labels"]:::script
-    LABELS --> IMPORT
-    IMPORT --> CELLS["preprocess_out/manifest_with_cells.csv<br/>preprocess_out/curated_neuron_index.csv<br/>preprocess_out/&lt;recording_id&gt;/neural/*_cell_traces.csv"]:::output
-
-    CELLS --> BUILD["scripts/build_aligned_sessions.py<br/>build behavior/SLEAP/Bpod/video-port/neural table"]:::script
-    M --> BUILD
-    BUILD --> ALIGNED["preprocess_out/aligned_session_index.csv<br/>preprocess_out/aligned_sessions/&lt;recording_id&gt;_session.csv"]:::output
-
-    EXTRACTOUT --> COREG["scripts/register_cells_across_sessions.py<br/>CaImAn uses spatial_weights + labels<br/>not OASIS/deconvolved traces"]:::script
-    LABELS --> COREG
-    CELLS --> COREG
-    COREG --> COREGOUT["preprocess_out/coregistration_index.csv<br/>preprocess_out/coregistration/&lt;mouse_id&gt;/&lt;mouse_id&gt;_cell_registration.csv"]:::output
-    COREGOUT --> RERUNCOREG["RERUN scripts/build_aligned_sessions.py<br/>merges registered IDs into analysis table"]:::rerun
-    RERUNCOREG --> ALIGNEDREG["updated aligned session CSV<br/>keeps local cell_* and adds registered_cell_*"]:::output
-    ALIGNEDREG --> ALIGNED
-    RERUNCOREG --> REGMAP["preprocess_out/&lt;recording_id&gt;/neural/&lt;recording_id&gt;_registered_cell_map.csv"]:::output
-
-    M --> BPOD["bpod_ts column present<br/>Bpod bytes/port states"]:::input
-    BPOD --> BUILD
-    M --> PORTNB["Port event GUI<br/>20260923_port_signal_extraction.ipynb<br/>draw port ROI and verify on/off frames"]:::notebook
-    PORTNB --> PORTOUT["preprocess_out/&lt;recording_id&gt;/behavior/*_video_port_events.csv<br/>port_rois/&lt;recording_id&gt;__port_#_direction.json"]:::output
-    PORTOUT --> RERUNPORT["RERUN scripts/build_aligned_sessions.py<br/>adds video_port_* active/event columns"]:::rerun
-    RERUNPORT --> ALIGNED
-
-    ALIGNED --> ARENANB["20260919_dataframe_construction.ipynb<br/>arena/startbox ROI GUI and one-recording checks"]:::notebook
-    ARENANB --> ALIGNEDROI["Arena ROI outputs<br/>arena_rois/*.json<br/>aligned CSV ROI columns"]:::output
-    ALIGNEDROI --> SEG["scripts/segment_trials.py<br/>cue events and trial table"]:::script
-    ALIGNED --> SEG
-    M --> CUEFIX["cue_ts column or preprocess_out/cue_ts_overrides.csv<br/>manual cue timestamp fixes"]:::input
-    CUEFIX --> RERUNCUE["RERUN build_aligned_sessions.py if manifest cue_ts changed<br/>RERUN segment_trials.py after any cue fix"]:::rerun
-    RERUNCUE --> BUILD
-    RERUNCUE --> SEG
-    SEG --> TRIALS["preprocess_out/trial_segment_index.csv<br/>preprocess_out/&lt;recording_id&gt;/behavior/*_cue_events.csv<br/>preprocess_out/&lt;recording_id&gt;/behavior/*_trials.csv"]:::output
-
-    ALIGNED --> VISCORE["20260923_visualize_core.ipynb<br/>full-session behavior and optional neural plots"]:::notebook
-    TRIALS --> VISTRIALS["20260923_visualize_trials.ipynb<br/>trial metrics, event timing, optional neural traces"]:::notebook
-    ALIGNED --> VISTRIALS
-
-    TRIALS --> CLASSNB["ML trial label<br/>20260923_trial_classification.ipynb<br/>label trials and train sklearn model"]:::notebook
-    CLASSNB --> MODEL["ML trial label outputs<br/>ML_model/trial_type_classifier.joblib<br/>preprocess_out/trial_classification/*"]:::output
-    MODEL --> PREDICT["scripts/predict_trial_labels.py<br/>apply saved model"]:::script
-    PREDICT --> REVIEW["20260923_trial_prediction_review.ipynb<br/>student correction/review loop"]:::notebook
-
-    classDef input fill:#ffffff,stroke:#71717a,color:#18181b;
-    classDef script fill:#f4f4f5,stroke:#52525b,color:#18181b;
-    classDef notebook fill:#dbeafe,stroke:#2563eb,color:#172554;
-    classDef gui fill:#fef3c7,stroke:#d97706,color:#451a03;
-    classDef output fill:#dcfce7,stroke:#16a34a,color:#052e16;
-    classDef rerun fill:#fee2e2,stroke:#dc2626,color:#450a0a;
-```
 
 ## Batch Flow
 

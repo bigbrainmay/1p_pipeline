@@ -10,7 +10,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from preprocess_functions.manifest import load_session_records
+from preprocess_functions.manifest import (
+    experiment_metadata_from_record,
+    load_session_records,
+)
 
 
 def main() -> None:
@@ -29,6 +32,7 @@ def main() -> None:
             "mouse_id": record.mouse_id,
             "date": record.date.strftime("%Y-%m-%d") if record.date is not None else None,
             "trial_type": record.trial_type,
+            **experiment_metadata_from_record(record),
         }
         if args.show_paths:
             row["neu_vid"] = str(record.neu_vid) if record.neu_vid else None

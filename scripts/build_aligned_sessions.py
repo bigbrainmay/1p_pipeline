@@ -11,7 +11,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from preprocess_functions.bpod import bpod_port_intervals, load_bpod_byte_events
-from preprocess_functions.manifest import load_session_records
+from preprocess_functions.manifest import (
+    experiment_metadata_from_record,
+    load_session_records,
+)
 from preprocess_functions.pipeline import (
     default_aligned_session_path,
     default_bpod_events_path,
@@ -61,6 +64,9 @@ def main() -> None:
         row = {
             "recording_id": record.recording_id,
             "session_id": record.session_id,
+            "mouse_id": record.mouse_id,
+            "trial_type": record.trial_type,
+            **experiment_metadata_from_record(record),
             "beh_csv": str(record.beh_csv) if record.beh_csv else None,
             "sleap_csv": str(record.sleap_csv) if record.sleap_csv else None,
             "bpod_ts": str(record.bpod_ts) if record.bpod_ts else None,
@@ -105,6 +111,8 @@ def main() -> None:
             aligned["session_id"] = record.session_id
             aligned["mouse_id"] = record.mouse_id
             aligned["trial_type"] = record.trial_type
+            for col, value in experiment_metadata_from_record(record).items():
+                aligned[col] = value
             aligned["cue_ts"] = record.cue_ts
             aligned["beh_vid_path"] = str(record.beh_vid) if record.beh_vid else None
             aligned["neu_vid_path"] = str(record.neu_vid) if record.neu_vid else None

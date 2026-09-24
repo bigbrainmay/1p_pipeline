@@ -28,6 +28,13 @@ PATH_COLUMNS = (
     "matlab_output_dir",
 )
 
+EXPERIMENT_METADATA_COLUMNS = (
+    "manipulation",
+    "cue_condition",
+    "cue_rotation_deg",
+    "visual_cues_present",
+)
+
 COLUMN_ALIASES = {
     "beh_csv_path": "beh_csv",
     "behavior_csv": "beh_csv",
@@ -64,6 +71,11 @@ COLUMN_ALIASES = {
     "neu_h5_path": "neu_h5",
     "miniscope_h5": "neu_h5",
     "miniscope_h5_path": "neu_h5",
+    "cue_rotation": "cue_rotation_deg",
+    "rotation_deg": "cue_rotation_deg",
+    "visual_cue_condition": "cue_condition",
+    "visual_cues": "visual_cues_present",
+    "cues_present": "visual_cues_present",
 }
 
 
@@ -243,6 +255,17 @@ def load_session_records(
         SessionRecord.from_row(row, lab_drive=lab_drive)
         for _, row in manifest.iterrows()
     ]
+
+
+def experiment_metadata_from_record(record: SessionRecord) -> dict[str, Any]:
+    """Return optional experimental-analysis metadata carried by a manifest row."""
+    metadata = {}
+    for col in EXPERIMENT_METADATA_COLUMNS:
+        value = record.extras.get(col)
+        if _is_missing(value):
+            value = None
+        metadata[col] = value
+    return metadata
 
 
 def normalize_manifest_table(
