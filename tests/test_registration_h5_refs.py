@@ -121,6 +121,63 @@ class RegistrationH5ReferenceTests(unittest.TestCase):
             self.assertEqual(dims, (2, 2))
             np.testing.assert_allclose(A.toarray(), expected.toarray())
 
+    @unittest.skipIf(h5py is None, "h5py is required for HDF5 ndSparse fixtures")
+    def test_loads_matlab_nd_sparse_placeholder_from_refs_candidate(self) -> None:
+        load_extract_spatial_weights, spatial_weights_to_caiman_A = (
+            self._registration_functions()
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mat_path = Path(tmpdir) / "extract_output_unsorted.mat"
+            expected = sparse.csc_matrix(
+                np.array(
+                    [
+                        [1.0, 0.0, 0.0],
+                        [0.0, 2.0, 0.0],
+                        [0.0, 0.0, 3.0],
+                        [4.0, 0.0, 0.0],
+                    ]
+                )
+            )
+            partition = sparse.csc_matrix(
+                np.array(
+                    [
+                        [5.0],
+                        [0.0],
+                        [0.0],
+                        [0.0],
+                    ]
+                )
+            )
+            with h5py.File(mat_path, "w") as h5f:
+                output = h5f.create_group("output")
+                refs = h5f.create_group("#refs#")
+                full_group = refs.create_group("Wo")
+                partition_group = refs.create_group("b")
+                _write_matlab_sparse_group(full_group, expected)
+                _write_matlab_sparse_group(partition_group, partition)
+
+                placeholder = output.create_dataset(
+                    "spatial_weights",
+                    data=np.array([[3707764736, 2, 1, 1, 1, 1]], dtype=np.uint32),
+                )
+                placeholder.attrs["H5PATH"] = "/output"
+                placeholder.attrs["MATLAB_class"] = "ndSparse"
+                placeholder.attrs["MATLAB_object_decode"] = np.int32(3)
+
+            spatial_weights = load_extract_spatial_weights(
+                mat_path,
+                label_count=3,
+                template_shape=(2, 2),
+            )
+            A, dims = spatial_weights_to_caiman_A(
+                spatial_weights,
+                labels=np.array([1, 0, 1]),
+                template_shape=(2, 2),
+            )
+
+            self.assertEqual(dims, (2, 2))
+            np.testing.assert_allclose(A.toarray(), expected.toarray())
+
     def test_concatenates_sparse_sequence_for_partitioned_spatial_weights(self) -> None:
         _, spatial_weights_to_caiman_A = self._registration_functions()
         first = sparse.csc_matrix(

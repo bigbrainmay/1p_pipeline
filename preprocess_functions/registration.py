@@ -59,8 +59,12 @@ def load_registration_input(
     if len(component_indices) == 0:
         raise ValueError(f"{recording_id} has no accepted cells with label {accepted_label}")
 
-    spatial_weights = load_extract_spatial_weights(traces_mat_path)
     template = load_extract_summary_image(traces_mat_path)
+    spatial_weights = load_extract_spatial_weights(
+        traces_mat_path,
+        label_count=int(labels.shape[0]),
+        template_shape=None if template is None else template.shape,
+    )
     A_all, dims = spatial_weights_to_caiman_A(
         spatial_weights,
         labels=labels,
@@ -185,7 +189,12 @@ def assignments_to_long_dataframe(
     return pd.DataFrame(rows)
 
 
-def load_extract_spatial_weights(traces_mat_path: str | Path) -> Any:
+def load_extract_spatial_weights(
+    traces_mat_path: str | Path,
+    *,
+    label_count: int | None = None,
+    template_shape: tuple[int, ...] | None = None,
+) -> Any:
     traces_mat_path = Path(traces_mat_path)
     h5_value = _load_h5_field(
         traces_mat_path,
@@ -198,7 +207,20 @@ def load_extract_spatial_weights(traces_mat_path: str | Path) -> Any:
         required=False,
     )
     if h5_value is not None:
-        return h5_value
+        if _is_plausible_spatial_weights(
+            h5_value,
+            label_count=label_count,
+            template_shape=template_shape,
+        ):
+            return h5_value
+
+        sparse_candidate = _load_h5_sparse_spatial_candidate(
+            traces_mat_path,
+            label_count=label_count,
+            template_shape=template_shape,
+        )
+        if sparse_candidate is not None:
+            return sparse_candidate
 
     from scipy.io import loadmat
 
@@ -386,6 +408,105 @@ def _h5_reference_dataset_to_values(dataset: Any) -> Any:
     if values:
         return values
     return np.asarray(dataset).squeeze()
+
+
+def _load_h5_sparse_spatial_candidate(
+    mat_path: Path,
+    *,
+    label_count: int | None,
+    template_shape: tuple[int, ...] | None,
+) -> Any | None:
+    import h5py
+
+    template_dims = _template_dims(template_shape)
+    candidates = []
+    try:
+        with h5py.File(mat_path, "r") as h5f:
+            def collect_sparse(name: str, obj: Any) -> None:
+                if not hasattr(obj, "keys"):
+                    return
+                if not {"data", "ir", "jc"}.issubset(set(obj.keys())):
+                    return
+                try:
+                    matrix = _h5_node_to_array_or_sparse(obj)
+                    score = _score_sparse_spatial_candidate(
+                        matrix,
+                        label_count=label_count,
+                        template_dims=template_dims,
+                    )
+                except Exception:
+                    return
+                if score is not None:
+                    candidates.append((score, name, matrix))
+
+            h5f.visititems(collect_sparse)
+    except OSError:
+        return None
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][2]
+
+
+def _score_sparse_spatial_candidate(
+    matrix: Any,
+    *,
+    label_count: int | None,
+    template_dims: tuple[int, int] | None,
+) -> tuple[int, int] | None:
+    if matrix.ndim != 2:
+        return None
+
+    score = 0
+    if label_count is not None:
+        if matrix.shape[1] == label_count:
+            score += 1000
+        elif matrix.shape[0] == label_count:
+            score += 500
+        else:
+            return None
+
+    if template_dims is not None:
+        n_pixels = int(template_dims[0] * template_dims[1])
+        if matrix.shape[0] == n_pixels:
+            score += 200
+        elif matrix.shape[1] == n_pixels:
+            score += 100
+
+    return score, int(max(matrix.shape))
+
+
+def _is_plausible_spatial_weights(
+    value: Any,
+    *,
+    label_count: int | None,
+    template_shape: tuple[int, ...] | None,
+) -> bool:
+    sparse = _load_scipy_sparse()
+    template_dims = _template_dims(template_shape)
+
+    if isinstance(value, (list, tuple)):
+        return bool(value)
+
+    if sparse.issparse(value):
+        return _score_sparse_spatial_candidate(
+            value,
+            label_count=label_count,
+            template_dims=template_dims,
+        ) is not None
+
+    arr = np.asarray(value).squeeze()
+    if arr.ndim == 3:
+        if label_count is None:
+            return True
+        return any(size == label_count for size in arr.shape)
+    if arr.ndim == 2:
+        if label_count is None:
+            return True
+        return label_count in arr.shape
+    return False
 
 
 def _matlab_sparse_n_rows(node: Any) -> int:
