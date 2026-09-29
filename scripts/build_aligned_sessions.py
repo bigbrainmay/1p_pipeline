@@ -290,7 +290,6 @@ def add_registered_cell_aliases(
         out = pd.concat(
             [aligned, pd.DataFrame(alias_columns, index=aligned.index)],
             axis=1,
-            copy=False,
         )
     else:
         out = aligned

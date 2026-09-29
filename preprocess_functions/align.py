@@ -219,7 +219,6 @@ def align_session(
                 cell_traces.reset_index(drop=True),
             ],
             axis=1,
-            copy=False,
         )
 
         # Sanity checks.
