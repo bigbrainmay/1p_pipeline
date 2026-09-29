@@ -271,16 +271,14 @@ def add_registered_cell_aliases(
         summary["n_registered_cell_aliases"] = 0
         return aligned, summary
 
-    out = aligned.copy()
     map_rows = []
-    alias_count = 0
+    alias_columns = {}
     for _, row in rows.iterrows():
         local_col = str(row["cell_col"])
         registered_col = str(row["registered_cell_id"])
-        has_local_trace = local_col in out.columns
+        has_local_trace = local_col in aligned.columns
         if has_local_trace:
-            out[registered_col] = out[local_col]
-            alias_count += 1
+            alias_columns[registered_col] = aligned[local_col]
 
         map_row = row.to_dict()
         map_row["local_cell_col"] = local_col
@@ -288,14 +286,23 @@ def add_registered_cell_aliases(
         map_row["has_local_trace"] = bool(has_local_trace)
         map_rows.append(map_row)
 
+    if alias_columns:
+        out = pd.concat(
+            [aligned, pd.DataFrame(alias_columns, index=aligned.index)],
+            axis=1,
+            copy=False,
+        )
+    else:
+        out = aligned
+
     map_path = default_registered_cell_map_path(output_root, record)
     map_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(map_rows).to_csv(map_path, index=False)
 
     summary["registered_cell_map_csv"] = str(map_path)
     summary["n_registered_cell_links"] = int(len(rows))
-    summary["n_registered_cell_aliases"] = int(alias_count)
-    if alias_count:
+    summary["n_registered_cell_aliases"] = int(len(alias_columns))
+    if alias_columns:
         summary["registered_cell_status"] = "registered_aliases_added"
     else:
         summary["registered_cell_status"] = "registered_cells_missing_local_traces"

@@ -201,12 +201,26 @@ def align_session(
                 f"Found columns: {neu_df.columns.tolist()}"
             )
         
-        if "index" in cell_df.columns:
-            cell_df = cell_df.rename(columns={"index": "cell_frame_idx"})
+        cell_df = cell_df.rename(columns={"index": "cell_frame_idx"})
+        if "cell_frame_idx" in cell_df.columns:
+            cell_metadata = cell_df[["cell_frame_idx"]].copy()
+            cell_traces = cell_df.drop(columns=["cell_frame_idx"])
         else:
-            cell_df.insert(0, "cell_frame_idx", np.arange(len(cell_df), dtype=int))
+            cell_metadata = pd.DataFrame(
+                {"cell_frame_idx": np.arange(len(cell_df), dtype=int)}
+            )
+            cell_traces = cell_df
 
-        cell_df[ts_col] = neu_df[ts_col].values
+        cell_metadata[ts_col] = neu_df[ts_col].values
+        cell_traces = cell_traces.drop(columns=[ts_col], errors="ignore")
+        cell_df = pd.concat(
+            [
+                cell_metadata.reset_index(drop=True),
+                cell_traces.reset_index(drop=True),
+            ],
+            axis=1,
+            copy=False,
+        )
 
         # Sanity checks.
         if cell_df[ts_col].isna().any():
