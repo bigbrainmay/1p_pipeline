@@ -115,8 +115,13 @@ def resolve_lab_path(value: Any, lab_drive: str | Path | None = None) -> Path | 
 
     drive_match = re.match(r"^[A-Za-z]:[\\/]*(.*)$", text)
     if drive_match:
-        if lab_drive_path:
-            return lab_drive_path.joinpath(*_split_path_parts(drive_match.group(1)))
+        drive_parts = _split_path_parts(drive_match.group(1))
+        if (
+            lab_drive_path
+            and drive_parts
+            and drive_parts[0].lower() in LAB_RELATIVE_ROOTS
+        ):
+            return lab_drive_path.joinpath(*drive_parts)
         return Path(text)
 
     if text.startswith("\\\\") and not re.match(r"^\\\\Data[\\/]", text, re.I):

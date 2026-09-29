@@ -26,8 +26,13 @@ def resolve_lab_path(p, lab_drive=None):
 
     drive_match = re.match(r"^[A-Za-z]:[\\/]*(.*)$", p)
     if drive_match:
-        if lab_drive_path:
-            return lab_drive_path.joinpath(*_split_lab_path_parts(drive_match.group(1)))
+        drive_parts = _split_lab_path_parts(drive_match.group(1))
+        if (
+            lab_drive_path
+            and drive_parts
+            and drive_parts[0].lower() in LAB_RELATIVE_ROOTS
+        ):
+            return lab_drive_path.joinpath(*drive_parts)
         return Path(p)
 
     # true UNC path (\\server\share)
