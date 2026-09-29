@@ -1289,6 +1289,7 @@ def plot_trajectory_coverage_with_cell(
         ax.scatter(x_plot[0], y_plot[0], marker="^", s=80, )
         ax.scatter(x_plot[-1], y_plot[-1], marker="s", s=80, )
     ax.set_aspect("equal")
+    ax.invert_yaxis()
     ax.set_title(f"{cell_col}: active frames colored by head direction")
     ax.set_xlabel(x_col)
     ax.set_ylabel(y_col)

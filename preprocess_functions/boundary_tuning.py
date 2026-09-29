@@ -5,12 +5,17 @@ import pandas as pd
 
 
 CELL_COL_RE = re.compile(r"^cell_(\d+)$")
+REGISTERED_CELL_COL_RE = re.compile(r"^registered_cell_(\d+)$")
+ANY_CELL_COL_RE = re.compile(r"^(?:registered_)?cell_(\d+)$")
 
 
 def cell_idx_from_col(cell_col: str) -> int:
-    match = CELL_COL_RE.fullmatch(str(cell_col))
+    match = ANY_CELL_COL_RE.fullmatch(str(cell_col))
     if not match:
-        raise ValueError(f"Expected a cell column like 'cell_17', got {cell_col!r}")
+        raise ValueError(
+            "Expected a cell column like 'cell_17' or 'registered_cell_17', "
+            f"got {cell_col!r}"
+        )
     return int(match.group(1))
 
 
