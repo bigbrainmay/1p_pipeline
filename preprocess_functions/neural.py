@@ -332,9 +332,9 @@ def _h5_node_to_dense_array(node: Any) -> np.ndarray:
     keys = set(node.keys())
     if {"data", "ir", "jc"}.issubset(keys):
         sparse = _load_scipy_sparse()
-        data = np.asarray(node["data"]).squeeze()
-        ir = np.asarray(node["ir"]).squeeze().astype(np.int64)
-        jc = np.asarray(node["jc"]).squeeze().astype(np.int64)
+        data = np.asarray(node["data"]).ravel(order="F")
+        ir = np.asarray(node["ir"]).ravel(order="F").astype(np.int64)
+        jc = np.asarray(node["jc"]).ravel(order="F").astype(np.int64)
         n_rows = _matlab_sparse_n_rows(node)
         n_cols = len(jc) - 1
         return np.asarray(
