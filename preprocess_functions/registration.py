@@ -227,7 +227,7 @@ def load_extract_summary_image(traces_mat_path: str | Path) -> np.ndarray | None
         required=False,
     )
     if h5_value is not None:
-        return np.asarray(h5_value).squeeze()
+        return _coerce_summary_image(h5_value)
 
     try:
         from scipy.io import loadmat
@@ -256,6 +256,13 @@ def spatial_weights_to_caiman_A(
     sparse = _load_scipy_sparse()
     label_count = None if labels is None else int(np.asarray(labels).size)
     template_dims = _template_dims(template_shape)
+
+    if isinstance(spatial_weights, (list, tuple)):
+        return _spatial_weight_sequence_to_caiman_A(
+            spatial_weights,
+            labels=labels,
+            template_shape=template_shape,
+        )
 
     if sparse.issparse(spatial_weights):
         A = spatial_weights.tocsc()
@@ -341,7 +348,11 @@ def _load_h5_field(
 
 
 def _h5_node_to_array_or_sparse(node: Any) -> Any:
+    import h5py
+
     if hasattr(node, "shape") and not hasattr(node, "keys"):
+        if h5py.check_dtype(ref=node.dtype) is not None:
+            return _h5_reference_dataset_to_values(node)
         return np.asarray(node).squeeze()
 
     keys = set(node.keys())
@@ -355,6 +366,26 @@ def _h5_node_to_array_or_sparse(node: Any) -> Any:
         return sparse.csc_matrix((data, ir, jc), shape=(n_rows, n_cols))
 
     raise TypeError(f"Unsupported H5 node for MATLAB field: {node.name}")
+
+
+def _h5_reference_dataset_to_values(dataset: Any) -> Any:
+    values = []
+    seen_names = set()
+    refs = np.asarray(dataset).ravel(order="F")
+    for ref in refs:
+        if not ref:
+            continue
+        target = dataset.file[ref]
+        if target.name in seen_names:
+            continue
+        seen_names.add(target.name)
+        values.append(_h5_node_to_array_or_sparse(target))
+
+    if len(values) == 1:
+        return values[0]
+    if values:
+        return values
+    return np.asarray(dataset).squeeze()
 
 
 def _matlab_sparse_n_rows(node: Any) -> int:
@@ -399,6 +430,92 @@ def _component_axis_from_labels(
             f"in spatial weight shape {shape}"
         )
     return matches[-1]
+
+
+def _spatial_weight_sequence_to_caiman_A(
+    values: list[Any] | tuple[Any, ...],
+    *,
+    labels: np.ndarray | None,
+    template_shape: tuple[int, ...] | None,
+) -> tuple[Any, tuple[int, int]]:
+    sparse = _load_scipy_sparse()
+    label_count = None if labels is None else int(np.asarray(labels).size)
+    conversion_errors = []
+
+    for value in values:
+        try:
+            A, dims = spatial_weights_to_caiman_A(
+                value,
+                labels=labels,
+                template_shape=template_shape,
+            )
+        except Exception as exc:
+            conversion_errors.append(repr(exc))
+            continue
+        if label_count is None or A.shape[1] == label_count:
+            return A, dims
+
+    pieces = []
+    for value in values:
+        try:
+            pieces.append(
+                spatial_weights_to_caiman_A(
+                    value,
+                    labels=None,
+                    template_shape=template_shape,
+                )
+            )
+        except Exception as exc:
+            conversion_errors.append(repr(exc))
+
+    if not pieces:
+        raise ValueError(
+            "Could not convert any referenced spatial_weights entries. "
+            f"Errors: {conversion_errors[:5]}"
+        )
+
+    dims_set = {dims for _, dims in pieces}
+    if len(dims_set) != 1:
+        raise ValueError(
+            "Referenced spatial_weights entries have mismatched FOV dims: "
+            f"{sorted(dims_set)}"
+        )
+
+    dims = pieces[0][1]
+    matrices = [A for A, _ in pieces]
+    row_counts = {A.shape[0] for A in matrices}
+    if len(row_counts) != 1:
+        raise ValueError(
+            "Referenced spatial_weights entries do not share one pixel axis: "
+            f"{[A.shape for A in matrices]}"
+        )
+
+    A = sparse.hstack(matrices, format="csc")
+    if label_count is not None and A.shape[1] != label_count:
+        raise ValueError(
+            f"Concatenated referenced spatial_weights have {A.shape[1]} "
+            f"components, but labels contain {label_count} entries"
+        )
+    return A, dims
+
+
+def _coerce_summary_image(value: Any) -> np.ndarray | None:
+    candidates = []
+    for item in _flatten_h5_values(value):
+        arr = np.asarray(item).squeeze()
+        if arr.ndim >= 2:
+            candidates.append(arr)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda arr: arr.size)
+
+
+def _flatten_h5_values(value: Any):
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _flatten_h5_values(item)
+    else:
+        yield value
 
 
 def _orient_component_matrix(
