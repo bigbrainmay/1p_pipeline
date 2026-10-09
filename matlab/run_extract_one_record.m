@@ -40,6 +40,17 @@ if opts.Overwrite || ~exist(final_h5_path, 'file')
     fprintf('Preprocessing %s\n', preprocess_input);
     preprocess_config = get_defaults([]);
     preprocess_config.use_gpu = opts.UseGpu;
+    if ~isempty(opts.PreprocessSpatialHighpassCutoff)
+        preprocess_config.avg_cell_radius = opts.AvgCellRadius;
+        preprocess_config.spatial_highpass_cutoff = opts.PreprocessSpatialHighpassCutoff;
+    end
+    if ~isempty(opts.PreprocessSpatialLowpassCutoff)
+        preprocess_config.avg_cell_radius = opts.AvgCellRadius;
+        preprocess_config.spatial_lowpass_cutoff = opts.PreprocessSpatialLowpassCutoff;
+    end
+    if ~isempty(opts.PreprocessPartitionSizeTime)
+        preprocess_config.partition_size_time = opts.PreprocessPartitionSizeTime;
+    end
     preprocess_save(preprocess_input, preprocess_config);
 else
     fprintf('Using existing preprocessed H5: %s\n', final_h5_path);
@@ -64,6 +75,9 @@ config.thresholds.eccent_thresh = opts.EccentThresh;
 config.thresholds.spatial_corrupt_thresh = opts.SpatialCorruptThresh;
 config.thresholds.T_dup_corr_thresh = opts.TDupCorrThresh;
 config.adaptive_kappa = opts.AdaptiveKappa;
+if ~isempty(opts.CellfindSpatialLowpassCutoff)
+    config.spatial_lowpass_cutoff = opts.CellfindSpatialLowpassCutoff;
+end
 
 config.preprocess = 0;
 config.F_per_pixel = h5read(final_h5_path, '/F_per_pixel');
@@ -107,6 +121,10 @@ p.addParameter('DownsampleTimeBy', 5);
 p.addParameter('UseSparseArrays', 1);
 p.addParameter('MaxIter', 5);
 p.addParameter('EccentThresh', 5);
+p.addParameter('PreprocessSpatialHighpassCutoff', []);
+p.addParameter('PreprocessSpatialLowpassCutoff', []);
+p.addParameter('PreprocessPartitionSizeTime', []);
+p.addParameter('CellfindSpatialLowpassCutoff', []);
 p.addParameter('SpatialCorruptThresh', 3.5);
 p.addParameter('TDupCorrThresh', 0.7);
 p.addParameter('AdaptiveKappa', 2);
@@ -133,12 +151,24 @@ opts.NumPartitionsY = numeric_value(opts.NumPartitionsY);
 opts.DownsampleTimeBy = numeric_value(opts.DownsampleTimeBy);
 opts.MaxIter = numeric_value(opts.MaxIter);
 opts.EccentThresh = numeric_value(opts.EccentThresh);
+opts.PreprocessSpatialHighpassCutoff = optional_numeric_value(opts.PreprocessSpatialHighpassCutoff);
+opts.PreprocessSpatialLowpassCutoff = optional_numeric_value(opts.PreprocessSpatialLowpassCutoff);
+opts.PreprocessPartitionSizeTime = optional_numeric_value(opts.PreprocessPartitionSizeTime);
+opts.CellfindSpatialLowpassCutoff = optional_numeric_value(opts.CellfindSpatialLowpassCutoff);
 opts.SpatialCorruptThresh = numeric_value(opts.SpatialCorruptThresh);
 opts.TDupCorrThresh = numeric_value(opts.TDupCorrThresh);
 opts.AdaptiveKappa = numeric_value(opts.AdaptiveKappa);
 opts.TMinSnr = numeric_value(opts.TMinSnr);
 opts.SizeUpperLimit = numeric_value(opts.SizeUpperLimit);
 opts.SizeLowerLimit = numeric_value(opts.SizeLowerLimit);
+end
+
+
+function value = optional_numeric_value(value)
+if isempty(value)
+    return
+end
+value = numeric_value(value);
 end
 
 
