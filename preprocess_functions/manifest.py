@@ -22,6 +22,7 @@ PATH_COLUMNS = (
     "beh_vid",
     "neu_vid",
     "neu_h5",
+    "neu_mc_h5",
     "cell_csv",
     "extract_output_mat",
     "extract_labels_mat",
@@ -71,6 +72,11 @@ COLUMN_ALIASES = {
     "neu_h5_path": "neu_h5",
     "miniscope_h5": "neu_h5",
     "miniscope_h5_path": "neu_h5",
+    "neu_mc_h5_path": "neu_mc_h5",
+    "miniscope_mc_h5": "neu_mc_h5",
+    "miniscope_mc_h5_path": "neu_mc_h5",
+    "motion_corrected_h5": "neu_mc_h5",
+    "motion_corrected_h5_path": "neu_mc_h5",
     "cue_rotation": "cue_rotation_deg",
     "rotation_deg": "cue_rotation_deg",
     "visual_cue_condition": "cue_condition",
@@ -155,6 +161,7 @@ class SessionRecord:
     beh_vid: Path | None = None
     neu_vid: Path | None = None
     neu_h5: Path | None = None
+    neu_mc_h5: Path | None = None
     cell_csv: Path | None = None
     extract_output_mat: Path | None = None
     extract_labels_mat: Path | None = None

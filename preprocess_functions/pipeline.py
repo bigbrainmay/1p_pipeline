@@ -29,6 +29,26 @@ def default_neu_h5_path(output_root: str | Path, record: SessionRecord) -> Path:
     return neural_output_dir(output_root, record) / f"{safe_id(record.recording_id)}_miniscope.h5"
 
 
+def default_motion_corrected_h5_path(
+    output_root: str | Path,
+    record: SessionRecord,
+) -> Path:
+    return (
+        neural_output_dir(output_root, record)
+        / f"{safe_id(record.recording_id)}_miniscope_mc.h5"
+    )
+
+
+def default_motion_correction_prefilter_h5_path(
+    output_root: str | Path,
+    record: SessionRecord,
+) -> Path:
+    return (
+        neural_output_dir(output_root, record)
+        / f"{safe_id(record.recording_id)}_miniscope_mc_prefilter.h5"
+    )
+
+
 def default_cell_csv_path(
     output_root: str | Path,
     record: SessionRecord,

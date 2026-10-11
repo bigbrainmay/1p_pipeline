@@ -16,7 +16,11 @@ from preprocess_functions.manifest import (
     write_manifest_with_outputs,
 )
 from preprocess_functions.neural import run_matlab_extraction
-from preprocess_functions.pipeline import default_neu_h5_path, matlab_output_dir
+from preprocess_functions.pipeline import (
+    default_motion_corrected_h5_path,
+    default_neu_h5_path,
+    matlab_output_dir,
+)
 
 
 def main() -> None:
@@ -37,16 +41,26 @@ def main() -> None:
         if not selected(record, args.only):
             continue
 
-        neu_h5 = (
+        raw_h5 = (
             record.neu_h5
             if args.use_manifest_h5 and record.neu_h5
             else default_neu_h5_path(output_root, record)
+        )
+        neu_h5, input_kind = choose_neural_input_h5(
+            record,
+            output_root,
+            raw_h5=raw_h5,
+            ignore_motion_corrected=args.ignore_motion_corrected,
+            use_motion_corrected=args.use_motion_corrected,
         )
         out_dir = record.matlab_output_dir or matlab_output_dir(output_root, record)
         row = {
             "recording_id": record.recording_id,
             "session_id": record.session_id,
-            "neu_h5": str(neu_h5),
+            "neu_h5": str(raw_h5),
+            "neu_mc_h5": str(record.neu_mc_h5) if record.neu_mc_h5 else None,
+            "extract_input_h5": str(neu_h5),
+            "extract_input_kind": input_kind,
             "matlab_output_dir": str(out_dir),
         }
 
@@ -87,6 +101,8 @@ def main() -> None:
         {
             "recording_id": row["recording_id"],
             "neu_h5": row["neu_h5"],
+            "neu_mc_h5": row["neu_mc_h5"],
+            "extract_input_h5": row["extract_input_h5"],
             "matlab_output_dir": row["matlab_output_dir"],
         }
         for row in rows
@@ -116,6 +132,16 @@ def parse_args() -> argparse.Namespace:
         "--use-manifest-h5",
         action="store_true",
         help="Use an existing neu_h5 column instead of the local output-root H5 path",
+    )
+    parser.add_argument(
+        "--use-motion-corrected",
+        action="store_true",
+        help="Force the default *_miniscope_mc.h5 input path even if it does not exist yet",
+    )
+    parser.add_argument(
+        "--ignore-motion-corrected",
+        action="store_true",
+        help="Use raw neu_h5 even when neu_mc_h5 or *_miniscope_mc.h5 exists",
     )
     parser.add_argument(
         "--extra",
@@ -148,6 +174,27 @@ def selected(record, only: str | None) -> bool:
         record.trial_type,
         record.mouse_id,
     }
+
+
+def choose_neural_input_h5(
+    record,
+    output_root: Path,
+    *,
+    raw_h5: Path,
+    ignore_motion_corrected: bool,
+    use_motion_corrected: bool,
+) -> tuple[Path, str]:
+    if ignore_motion_corrected:
+        return raw_h5, "raw"
+
+    if record.neu_mc_h5:
+        return record.neu_mc_h5, "motion_corrected_manifest"
+
+    default_mc_h5 = default_motion_corrected_h5_path(output_root, record)
+    if use_motion_corrected or default_mc_h5.exists():
+        return default_mc_h5, "motion_corrected_default"
+
+    return raw_h5, "raw"
 
 
 if __name__ == "__main__":

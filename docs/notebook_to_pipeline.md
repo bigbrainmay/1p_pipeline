@@ -57,6 +57,7 @@ Recommended columns:
 - `cue_rotation_deg`: optional numeric cue rotation angle.
 - `visual_cues_present`: optional true/false cue presence marker.
 - `neu_h5`: produced by video conversion.
+- `neu_mc_h5`: produced by MATLAB/NormCorre motion correction.
 - `matlab_output_dir`: produced by MATLAB extraction.
 - `cell_csv`: produced by curated neuron import.
 
@@ -151,6 +152,29 @@ H5 frame `n` aligned with neural timestamp row `n`.
 If a spreadsheet already has a `neu_h5` column, it is ignored unless you pass
 `--use-manifest-h5`.
 
+Motion-correct each local H5 before EXTRACT preprocessing:
+
+```bash
+python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv \
+  --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
+  --output-root preprocess_out \
+  --overwrite
+```
+
+This writes:
+
+```text
+preprocess_out/<recording_id>/neural/<recording_id>_miniscope_mc.h5
+preprocess_out/motion_correction_index.csv
+preprocess_out/manifest_with_motion_correction.csv
+```
+
+By default, the motion-correction stage first writes a chunked spatial-bandpass
+movie and then runs NormCorre on that file. This keeps MATLAB from loading the
+full H5 into memory. The spatial bandpass step is separate from EXTRACT's
+`preprocess_save`, which later writes `*_final.h5` and `/F_per_pixel`. To motion
+correct the raw H5 directly instead, add `--extra mc_prefilter_enable=0`.
+
 Older converted H5 files may have `/valid_frame_mask` at the H5 root. EXTRACT's
 `preprocess_save` expects only the movie dataset at the root, so repair those H5
 files before MATLAB extraction:
@@ -161,10 +185,10 @@ python scripts/repair_miniscope_h5_for_extract.py preprocess_out/manifest_with_h
   --use-manifest-h5
 ```
 
-Run MATLAB extraction over the H5 files:
+Run MATLAB extraction over the motion-corrected H5 files:
 
 ```bash
-python scripts/run_matlab_neural_extraction.py preprocess_out/manifest_with_h5.csv \
+python scripts/run_matlab_neural_extraction.py preprocess_out/manifest_with_motion_correction.csv \
   --matlab-script matlab/run_extract_template.m \
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
   --output-root preprocess_out \
@@ -172,7 +196,9 @@ python scripts/run_matlab_neural_extraction.py preprocess_out/manifest_with_h5.c
   --extra extract_gpu_forward_compatibility=1
 ```
 
-The MATLAB runner also defaults to that local H5 path under `--output-root`.
+The MATLAB runner uses `neu_mc_h5` when that column is present. If you need to
+compare against the raw converted H5, add `--ignore-motion-corrected`.
+Otherwise it defaults to the local H5 path under `--output-root`.
 The template enables MATLAB CUDA forward compatibility when GPU extraction is
 enabled, because that setting is not persistent between MATLAB sessions.
 The template calls `matlab/run_extract_one_record.m`, which wraps:
