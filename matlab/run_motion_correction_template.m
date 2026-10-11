@@ -28,6 +28,7 @@
 %   mc_avg_cell_radius=7
 %   mc_use_gpu=0
 %   mc_template=0
+%   matlab_setup_path=''  % EXTRACT_setup.m file or folder to add recursively
 %
 % Example:
 %   python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv ...
@@ -39,6 +40,9 @@ assert(exist('neu_mc_h5_path', 'var') == 1, 'Missing neu_mc_h5_path');
 
 template_dir = fileparts(mfilename('fullpath'));
 addpath(template_dir);
+
+matlab_setup_path = get_optional_value('matlab_setup_path', '');
+run_optional_setup(matlab_setup_path);
 
 dataset_path = get_optional_value('dataset_path', '/data');
 mc_overwrite = get_optional_value('mc_overwrite', false);
@@ -100,6 +104,24 @@ if evalin('base', sprintf('exist(''%s'', ''var'')', name))
     value = evalin('base', name);
 else
     value = default_value;
+end
+end
+
+
+function run_optional_setup(setup_path)
+if missing_text(setup_path)
+    return
+end
+
+setup_path = char(setup_path);
+if exist(setup_path, 'file') == 2
+    fprintf('Running MATLAB setup script: %s\n', setup_path);
+    run(setup_path);
+elseif exist(setup_path, 'dir') == 7
+    fprintf('Adding MATLAB setup folder recursively: %s\n', setup_path);
+    addpath(genpath(setup_path));
+else
+    error('matlab_setup_path does not exist: %s', setup_path);
 end
 end
 

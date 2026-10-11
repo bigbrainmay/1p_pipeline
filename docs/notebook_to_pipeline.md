@@ -158,7 +158,8 @@ Motion-correct each local H5 before EXTRACT preprocessing:
 python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv \
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
   --output-root preprocess_out \
-  --overwrite
+  --overwrite \
+  --extra "matlab_setup_path=C:\path\to\EXTRACT_setup.m"
 ```
 
 This writes:
@@ -192,6 +193,7 @@ python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.c
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
   --output-root preprocess_out \
   --overwrite \
+  --extra "matlab_setup_path=C:\path\to\EXTRACT_setup.m" \
   --extra "mc_mask_mat_path=D:\preprocess_out\C5731A_20260806\neural\C5731A_20260806_mc_mask.mat"
 ```
 
@@ -202,6 +204,7 @@ python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.c
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
   --output-root preprocess_out \
   --overwrite \
+  --extra "matlab_setup_path=C:\path\to\EXTRACT_setup.m" \
   --extra "mc_mask_rect=[20 20 568 568]"
 ```
 
@@ -226,6 +229,7 @@ python scripts/run_matlab_neural_extraction.py preprocess_out/manifest_with_moti
   --matlab-script matlab/run_extract_template.m \
   --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
   --output-root preprocess_out \
+  --extra "matlab_setup_path=C:\path\to\EXTRACT_setup.m" \
   --extra extract_use_gpu=1 \
   --extra extract_gpu_forward_compatibility=1
 ```

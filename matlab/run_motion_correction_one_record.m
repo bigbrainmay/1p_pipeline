@@ -67,6 +67,8 @@ config_mc.use_gpu = opts.McUseGpu;
 config_mc.mc_template = opts.McTemplate;
 config_mc.file_type = 'h5';
 
+require_normcorre_on_path();
+
 mc_input = [mc_input_h5_path ':' dataset_path];
 mc_output = [output_h5_path ':' dataset_path];
 fprintf('NormCorre input: %s\n', mc_input);
@@ -300,4 +302,14 @@ end
 mask = zeros(height, width);
 mask(y_min:y_max, x_min:x_max) = 1;
 fprintf('Using motion-correction mask rect [x y width height] = [%s]\n', num2str(rect));
+end
+
+
+function require_normcorre_on_path()
+if exist('NoRMCorreSetParms', 'file') ~= 2
+    error(['NoRMCorreSetParms is not on the MATLAB path. ', ...
+        'Run EXTRACT_setup before the batch run, or pass ', ...
+        '--extra "matlab_setup_path=C:\path\to\EXTRACT_setup.m" ', ...
+        'or --extra "matlab_setup_path=C:\path\to\EXTRACT".']);
+end
 end
