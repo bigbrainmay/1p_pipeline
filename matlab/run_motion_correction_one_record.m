@@ -53,6 +53,19 @@ end
 config_mc = [];
 config_mc = get_defaults_mc(config_mc);
 config_mc.get_mask = opts.GetMask;
+config_mc.mask = load_or_build_mask(input_h5_path, dataset_path, opts);
+if ~isempty(config_mc.mask)
+    config_mc.get_mask = 0;
+end
+config_mc.bandpass = opts.Bandpass;
+config_mc.nt_template = opts.NtTemplate;
+config_mc.numFrame = opts.NumFrame;
+config_mc.nonrigid_mc = opts.Nonrigid;
+config_mc.ns_nonrigid = opts.NsNonrigid;
+config_mc.avg_cell_radius = opts.McAvgCellRadius;
+config_mc.use_gpu = opts.McUseGpu;
+config_mc.mc_template = opts.McTemplate;
+config_mc.file_type = 'h5';
 
 mc_input = [mc_input_h5_path ':' dataset_path];
 mc_output = [output_h5_path ':' dataset_path];
@@ -140,7 +153,17 @@ p.addParameter('PrefilterSpatialHighpassCutoff', 5);
 p.addParameter('PrefilterSpatialLowpassCutoff', 2);
 p.addParameter('PrefilterUseGpu', 0);
 p.addParameter('KeepPrefilter', false);
-p.addParameter('GetMask', 1);
+p.addParameter('GetMask', 0);
+p.addParameter('MaskRect', []);
+p.addParameter('MaskMatPath', '');
+p.addParameter('Bandpass', []);
+p.addParameter('NtTemplate', 100);
+p.addParameter('NumFrame', 1000);
+p.addParameter('Nonrigid', 0);
+p.addParameter('NsNonrigid', 128);
+p.addParameter('McAvgCellRadius', 7);
+p.addParameter('McUseGpu', 0);
+p.addParameter('McTemplate', 0);
 p.parse(varargin{:});
 opts = p.Results;
 
@@ -153,6 +176,15 @@ opts.PrefilterSpatialLowpassCutoff = numeric_value(opts.PrefilterSpatialLowpassC
 opts.PrefilterUseGpu = numeric_flag(opts.PrefilterUseGpu);
 opts.KeepPrefilter = logical_flag(opts.KeepPrefilter);
 opts.GetMask = numeric_flag(opts.GetMask);
+opts.MaskRect = numeric_vector(opts.MaskRect);
+opts.Bandpass = default_bandpass(opts.Bandpass, opts.PrefilterEnable);
+opts.NtTemplate = numeric_value(opts.NtTemplate);
+opts.NumFrame = numeric_value(opts.NumFrame);
+opts.Nonrigid = numeric_flag(opts.Nonrigid);
+opts.NsNonrigid = numeric_value(opts.NsNonrigid);
+opts.McAvgCellRadius = numeric_value(opts.McAvgCellRadius);
+opts.McUseGpu = numeric_flag(opts.McUseGpu);
+opts.McTemplate = numeric_flag(opts.McTemplate);
 end
 
 
@@ -169,6 +201,16 @@ function value = numeric_value(value)
 if ischar(value) || isstring(value)
     value = str2double(value);
 end
+end
+
+
+function value = numeric_vector(value)
+if ischar(value) || isstring(value)
+    text = char(value);
+    text = regexprep(text, '[\[\]\(\),;]', ' ');
+    value = sscanf(text, '%f')';
+end
+value = double(value);
 end
 
 
@@ -190,6 +232,15 @@ end
 end
 
 
+function value = default_bandpass(value, prefilter_enable)
+if isempty(value)
+    value = double(~prefilter_enable);
+else
+    value = numeric_flag(value);
+end
+end
+
+
 function tf = missing_text(value)
 if isstring(value)
     value = char(value);
@@ -202,4 +253,51 @@ elseif ischar(value)
 else
     tf = false;
 end
+end
+
+
+function mask = load_or_build_mask(input_h5_path, dataset_path, opts)
+mask = [];
+
+if ~missing_text(opts.MaskMatPath)
+    loaded = load(char(opts.MaskMatPath));
+    fields = fieldnames(loaded);
+    if isempty(fields)
+        error('Mask MAT file has no variables: %s', char(opts.MaskMatPath));
+    end
+    if isfield(loaded, 'mask')
+        mask = loaded.mask;
+    else
+        mask = loaded.(fields{1});
+    end
+    mask = double(mask ~= 0);
+    fprintf('Using motion-correction mask from MAT file: %s\n', char(opts.MaskMatPath));
+    return
+end
+
+rect = opts.MaskRect;
+if isempty(rect)
+    return
+end
+if numel(rect) ~= 4
+    error('MaskRect must be [x y width height], got %d values', numel(rect));
+end
+
+info = h5info(input_h5_path, dataset_path);
+dims = info.Dataspace.Size;
+height = dims(1);
+width = dims(2);
+
+rect = round(rect);
+x_min = max(1, rect(1));
+y_min = max(1, rect(2));
+x_max = min(width, rect(1) + rect(3));
+y_max = min(height, rect(2) + rect(4));
+if x_max < x_min || y_max < y_min
+    error('MaskRect is outside the movie bounds: [%s]', num2str(rect));
+end
+
+mask = zeros(height, width);
+mask(y_min:y_max, x_min:x_max) = 1;
+fprintf('Using motion-correction mask rect [x y width height] = [%s]\n', num2str(rect));
 end

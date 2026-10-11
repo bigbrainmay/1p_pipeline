@@ -17,7 +17,17 @@
 %   mc_prefilter_spatial_lowpass_cutoff=2
 %   mc_prefilter_use_gpu=0
 %   mc_keep_prefilter=0
-%   mc_get_mask=1
+%   mc_get_mask=0
+%   mc_mask_rect=[]  % [x y width height], same coordinates returned by getrect
+%   mc_mask_mat_path=''  % optional .mat file containing a mask variable
+%   mc_bandpass=[]  % defaults to 0 when mc_prefilter_enable=1, else 1
+%   mc_nt_template=100
+%   mc_num_frame=1000
+%   mc_nonrigid=0
+%   mc_ns_nonrigid=128
+%   mc_avg_cell_radius=7
+%   mc_use_gpu=0
+%   mc_template=0
 %
 % Example:
 %   python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv ...
@@ -39,7 +49,17 @@ mc_prefilter_spatial_highpass_cutoff = get_optional_value('mc_prefilter_spatial_
 mc_prefilter_spatial_lowpass_cutoff = get_optional_value('mc_prefilter_spatial_lowpass_cutoff', 2);
 mc_prefilter_use_gpu = get_optional_value('mc_prefilter_use_gpu', 0);
 mc_keep_prefilter = get_optional_value('mc_keep_prefilter', false);
-mc_get_mask = get_optional_value('mc_get_mask', 1);
+mc_get_mask = get_optional_value('mc_get_mask', 0);
+mc_mask_rect = get_optional_value('mc_mask_rect', []);
+mc_mask_mat_path = get_optional_value('mc_mask_mat_path', '');
+mc_bandpass = get_optional_value('mc_bandpass', []);
+mc_nt_template = get_optional_value('mc_nt_template', 100);
+mc_num_frame = get_optional_value('mc_num_frame', 1000);
+mc_nonrigid = get_optional_value('mc_nonrigid', 0);
+mc_ns_nonrigid = get_optional_value('mc_ns_nonrigid', 128);
+mc_avg_cell_radius = get_optional_value('mc_avg_cell_radius', 7);
+mc_use_gpu = get_optional_value('mc_use_gpu', 0);
+mc_template = get_optional_value('mc_template', 0);
 
 if ~exist('neu_mc_prefilter_h5_path', 'var') || missing_text(neu_mc_prefilter_h5_path)
     [folder, name, ext] = fileparts(neu_mc_h5_path);
@@ -60,7 +80,17 @@ summary = run_motion_correction_one_record( ...
     'PrefilterSpatialLowpassCutoff', mc_prefilter_spatial_lowpass_cutoff, ...
     'PrefilterUseGpu', mc_prefilter_use_gpu, ...
     'KeepPrefilter', mc_keep_prefilter, ...
-    'GetMask', mc_get_mask);
+    'GetMask', mc_get_mask, ...
+    'MaskRect', mc_mask_rect, ...
+    'MaskMatPath', mc_mask_mat_path, ...
+    'Bandpass', mc_bandpass, ...
+    'NtTemplate', mc_nt_template, ...
+    'NumFrame', mc_num_frame, ...
+    'Nonrigid', mc_nonrigid, ...
+    'NsNonrigid', mc_ns_nonrigid, ...
+    'McAvgCellRadius', mc_avg_cell_radius, ...
+    'McUseGpu', mc_use_gpu, ...
+    'McTemplate', mc_template);
 
 disp(summary);
 

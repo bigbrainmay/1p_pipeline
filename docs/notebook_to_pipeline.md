@@ -175,6 +175,40 @@ full H5 into memory. The spatial bandpass step is separate from EXTRACT's
 `preprocess_save`, which later writes `*_final.h5` and `/F_per_pixel`. To motion
 correct the raw H5 directly instead, add `--extra mc_prefilter_enable=0`.
 
+For batch runs, do not use EXTRACT's interactive `get_mask` rectangle selector.
+MATLAB `-batch` cannot reliably collect that click. To pick a mask with a GUI,
+open MATLAB normally and run:
+
+```matlab
+select_motion_correction_mask( ...
+    'D:\preprocess_out\C5731A_20260806\neural\C5731A_20260806_miniscope.h5', ...
+    'D:\preprocess_out\C5731A_20260806\neural\C5731A_20260806_mc_mask.mat');
+```
+
+Then pass the saved mask into the batch command:
+
+```bash
+python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv \
+  --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
+  --output-root preprocess_out \
+  --overwrite \
+  --extra "mc_mask_mat_path=D:\preprocess_out\C5731A_20260806\neural\C5731A_20260806_mc_mask.mat"
+```
+
+You can also pass the rectangle directly in image coordinates `[x y width height]`:
+
+```bash
+python scripts/run_matlab_motion_correction.py preprocess_out/manifest_with_h5.csv \
+  --matlab-bin "C:\Program Files\MATLAB\R2025b\bin\matlab.exe" \
+  --output-root preprocess_out \
+  --overwrite \
+  --extra "mc_mask_rect=[20 20 568 568]"
+```
+
+The runner converts the saved mask or rectangle into `config.mask` and keeps
+`config.get_mask=0`, so NormCorre uses the mask without opening a GUI during
+the batch run.
+
 Older converted H5 files may have `/valid_frame_mask` at the H5 root. EXTRACT's
 `preprocess_save` expects only the movie dataset at the root, so repair those H5
 files before MATLAB extraction:
