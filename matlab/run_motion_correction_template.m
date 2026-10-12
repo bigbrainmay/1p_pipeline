@@ -116,6 +116,7 @@ end
 setup_path = char(setup_path);
 if exist(setup_path, 'file') == 2
     fprintf('Running MATLAB setup script: %s\n', setup_path);
+    addpath(genpath(fileparts(setup_path)));
     run(setup_path);
 elseif exist(setup_path, 'dir') == 7
     fprintf('Adding MATLAB setup folder recursively: %s\n', setup_path);
