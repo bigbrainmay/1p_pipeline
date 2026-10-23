@@ -70,8 +70,18 @@ def main() -> None:
             continue
 
         try:
+            mask_vars = recording_mask_vars(record, output_root, base_extra_vars)
+            row["mc_mask_mat_path"] = mask_vars.get("mc_mask_mat_path")
+            if args.require_mask and not any(
+                mask_vars.get(key) for key in ("mc_mask_mat_path", "mc_mask_rect")
+            ):
+                rows.append({**row, "status": "missing_mask"})
+                print(f"{record.recording_id}: missing saved mask; skipping")
+                continue
+            if mask_vars.get("mc_mask_mat_path"):
+                print(f"{record.recording_id}: mask {mask_vars['mc_mask_mat_path']}")
             extra_vars = {
-                **base_extra_vars,
+                **mask_vars,
                 "neu_mc_h5_path": str(mc_h5),
                 "neu_mc_prefilter_h5_path": str(prefilter_h5),
             }
@@ -138,6 +148,11 @@ def parse_args() -> argparse.Namespace:
         help="Local root containing generated H5 files",
     )
     parser.add_argument("--manifest-out")
+    parser.add_argument(
+        "--require-mask",
+        action="store_true",
+        help="Skip recordings without a saved mask or explicit mc_mask_rect",
+    )
     parser.add_argument("--only", help="Recording ID, session ID, trial type, or mouse ID to process")
     parser.add_argument(
         "--use-manifest-h5",
@@ -164,6 +179,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     return parser.parse_args()
+
+
+def recording_mask_vars(record, output_root: Path, extra_vars: dict[str, str]) -> dict[str, str]:
+    """Resolve a recording's GUI-saved mask without changing shared batch options."""
+    values = dict(extra_vars)
+    explicit_mask = values.get("mc_mask_mat_path", "").strip()
+    if explicit_mask:
+        mask_path = Path(explicit_mask).expanduser()
+        if not mask_path.is_file():
+            raise FileNotFoundError(f"Motion-correction mask does not exist: {mask_path}")
+        values["mc_mask_mat_path"] = str(mask_path)
+    elif not values.get("mc_mask_rect", "").strip():
+        mask_path = neural_output_dir(output_root, record) / f"{record.recording_id}_mc_mask.mat"
+        if mask_path.is_file():
+            values["mc_mask_mat_path"] = str(mask_path)
+    return values
 
 
 def parse_extra_vars(items: list[str]) -> dict[str, str]:
